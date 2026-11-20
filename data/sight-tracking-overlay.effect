@@ -1,0 +1,28 @@
+// Sight MediaPipe landmark overlay; premultiplied RGBA at source resolution.
+uniform float4x4 ViewProj;
+uniform texture2d original_frame;
+uniform texture2d tracking_overlay;
+sampler_state linear_clamp
+{
+    Filter = Linear;
+    AddressU = Clamp;
+    AddressV = Clamp;
+};
+struct VSInput { float4 position : POSITION; float2 uv : TEXCOORD0; };
+struct VSOutput { float4 position : POSITION; float2 uv : TEXCOORD0; };
+VSOutput VSMain(VSInput v_in) {
+    VSOutput result;
+    result.position = mul(float4(v_in.position.xyz, 1.0), ViewProj);
+    result.uv = v_in.uv;
+    return result;
+}
+float4 PSMain(VSOutput v_in) : TARGET {
+    float4 source = original_frame.Sample(linear_clamp, v_in.uv);
+    float4 lines = tracking_overlay.Sample(linear_clamp, v_in.uv);
+    // Both textures are premultiplied. Preserve source alpha.
+    return float4(source.rgb * (1.0 - lines.a) + lines.rgb,
+                  source.a + (1.0 - source.a) * lines.a);
+}
+technique Draw {
+    pass { vertex_shader = VSMain(v_in); pixel_shader = PSMain(v_in); }
+}

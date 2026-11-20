@@ -1,0 +1,24 @@
+uniform float4x4 ViewProj;
+uniform texture2d image;
+uniform texture2d flow_grid;
+uniform int view_mode;
+uniform float2 camera_offset;
+uniform float camera_margin;
+sampler_state sourceSampler {Filter=Linear;AddressU=Clamp;AddressV=Clamp;};
+sampler_state pointSampler {Filter=Point;AddressU=Clamp;AddressV=Clamp;};
+struct VertData {float4 pos:POSITION;float2 uv:TEXCOORD0;};
+VertData VSMain(VertData v) {
+    VertData o;o.pos=mul(float4(v.pos.xyz,1),ViewProj);o.uv=v.uv;return o;
+}
+float4 PSMain(VertData v):TARGET {
+    if(view_mode==3) {
+        float2 uv=0.5+(v.uv-0.5)*(1.0-2.0*camera_margin)+camera_offset;
+        return image.Sample(sourceSampler,uv);
+    }
+    float4 motion=flow_grid.Sample(pointSampler,v.uv);
+    if(view_mode==2)return float4(motion.b,motion.b,motion.b,1);
+    // Neutral gray is no reliable displacement. Red and green encode
+    // forward horizontal and vertical direction; blue is confidence.
+    return float4(saturate(0.5-12.0*motion.xy*motion.b),motion.b,1);
+}
+technique Draw {pass {vertex_shader=VSMain(v);pixel_shader=PSMain(v);}}

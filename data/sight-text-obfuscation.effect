@@ -1,0 +1,23 @@
+uniform float4x4 ViewProj;
+uniform texture2d image;
+uniform texture2d text_mask;
+uniform int view_mode;
+uniform float2 image_size;
+uniform float block_px;
+sampler_state source_sample {Filter=Linear;AddressU=Clamp;AddressV=Clamp;};
+sampler_state mask_sample {Filter=Point;AddressU=Clamp;AddressV=Clamp;};
+struct VertData {float4 pos:POSITION;float2 uv:TEXCOORD0;};
+VertData VSMain(VertData v) {
+    VertData o;o.pos=mul(float4(v.pos.xyz,1),ViewProj);o.uv=v.uv;return o;
+}
+float4 PSMain(VertData v):TARGET {
+    float4 original=image.Sample(source_sample,v.uv);
+    float mask=text_mask.Sample(mask_sample,v.uv).r;
+    if(view_mode==2)return float4(mask,mask,mask,1);
+    if(mask<0.5)return original;
+    if(view_mode==0)return float4(0,0,0,1);
+    float2 cells=max(float2(1,1),image_size/max(1.0,block_px));
+    float2 center=(floor(v.uv*cells)+0.5)/cells;
+    return float4(image.Sample(source_sample,saturate(center)).rgb,original.a);
+}
+technique Draw {pass {vertex_shader=VSMain(v);pixel_shader=PSMain(v);}}

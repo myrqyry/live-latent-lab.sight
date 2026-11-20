@@ -1,0 +1,50 @@
+// GPU visualization of a small real depth map against native-resolution RGB.
+uniform float4x4 ViewProj;
+uniform texture2d original_frame;
+uniform texture2d depth_map;
+uniform int view_mode;
+uniform float fog_strength;
+
+sampler_state linear_clamp
+{
+    Filter = Linear;
+    AddressU = Clamp;
+    AddressV = Clamp;
+};
+struct VSInput
+{
+    float4 position : POSITION;
+    float2 uv : TEXCOORD0;
+};
+struct VSOutput
+{
+    float4 position : POSITION;
+    float2 uv : TEXCOORD0;
+};
+VSOutput VSMain(VSInput v_in)
+{
+    VSOutput transformed;
+    transformed.position = mul(float4(v_in.position.xyz, 1.0), ViewProj);
+    transformed.uv = v_in.uv;
+    return transformed;
+}
+float4 PSMain(VSOutput v_in) : TARGET
+{
+    float depth = saturate(depth_map.Sample(linear_clamp, v_in.uv).r);
+    if (view_mode == 0)
+        return float4(depth, depth, depth, 1.0);
+    float4 source = original_frame.Sample(linear_clamp, v_in.uv);
+    // Relative depth is higher nearer; apply a subtle natural cool haze
+    // to the far range while preserving the original source alpha.
+    float haze = (1.0 - depth) * fog_strength;
+    float3 fog = float3(0.72, 0.77, 0.80);
+    return float4(lerp(source.rgb, fog * source.a, haze), source.a);
+}
+technique Draw
+{
+    pass
+    {
+        vertex_shader = VSMain(v_in);
+        pixel_shader = PSMain(v_in);
+    }
+}

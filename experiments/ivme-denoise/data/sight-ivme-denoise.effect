@@ -1,0 +1,22 @@
+// Preserve the original source alpha and frame geometry, while blending a
+// denoised small frame texture from the asynchronous ONNX worker.
+uniform float4x4 ViewProj;
+uniform texture2d original_frame;
+uniform texture2d denoised_frame;
+uniform float mix_amount;
+sampler_state linear_clamp {
+    Filter = Linear;
+    AddressU = Clamp;
+    AddressV = Clamp;
+};
+struct VertIn {float4 pos:POSITION;float2 uv:TEXCOORD0;};
+struct VertOut {float4 pos:POSITION;float2 uv:TEXCOORD0;};
+VertOut VSMain(VertIn i){
+    VertOut o;o.pos=mul(float4(i.pos.xyz,1.0),ViewProj);o.uv=i.uv;return o;
+}
+float4 PSMain(VertOut i):TARGET{
+    float4 src=original_frame.Sample(linear_clamp,i.uv);
+    float4 clean=denoised_frame.Sample(linear_clamp,i.uv);
+    return float4(lerp(src.rgb,clean.rgb,saturate(mix_amount)),src.a);
+}
+technique Draw {pass{vertex_shader=VSMain(i);pixel_shader=PSMain(i);}}

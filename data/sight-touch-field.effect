@@ -1,0 +1,90 @@
+// Sight: Touch Field — hand-driven refraction of the true upstream OBS image.
+// x/y are normalized and w=0 disables each point. All uniforms are bound.
+uniform float4x4 ViewProj;
+uniform texture2d original_frame;
+uniform float4 fingertip0; // x,y,pinch,valid
+uniform float4 fingertip1;
+uniform float touch_strength;
+uniform float touch_radius;
+uniform float touch_waves;
+uniform float touch_speed;
+uniform float touch_pinch_boost;
+uniform float touch_time;
+uniform float touch_aspect;
+// Each event stores x, y, age in seconds, intensity; w=0 disables.
+// Eight bounded waves are maintained by the CPU as fingers move.
+uniform float4 ripple0;
+uniform float4 ripple1;
+uniform float4 ripple2;
+uniform float4 ripple3;
+uniform float4 ripple4;
+uniform float4 ripple5;
+uniform float4 ripple6;
+uniform float4 ripple7;
+sampler_state sample_source {
+    Filter = Linear;
+    AddressU = Clamp;
+    AddressV = Clamp;
+};
+struct VSInput { float4 position : POSITION; float2 uv : TEXCOORD0; };
+struct VSOutput { float4 position : POSITION; float2 uv : TEXCOORD0; };
+VSOutput VSMain(VSInput v_in) {
+    VSOutput v_out;
+    v_out.position = mul(float4(v_in.position.xyz,1.0),ViewProj);
+    v_out.uv=v_in.uv;
+    return v_out;
+}
+float2 bend(float2 uv,float4 touch) {
+    if(touch.w<0.5)return float2(0.0,0.0);
+    float2 from=uv-touch.xy;
+    float2 metric=float2(from.x*touch_aspect,from.y);
+    float distance=length(metric);
+    float radius=max(0.0001,touch_radius);
+    float reach=saturate(1.0-distance/radius);
+    if(reach<=0.0)return float2(0.0,0.0);
+    // A decaying radial wave. Its motion uses time but never extrapolates
+    // fingertip positions after tracking signals expire.
+    float falloff=reach*reach*(3.0-2.0*reach);
+    float phase=distance/radius*touch_waves*6.2831853-
+                touch_time*touch_speed*6.2831853;
+    float displacement=sin(phase)*falloff*touch_strength*
+                       (1.0 + touch.z*touch_pinch_boost);
+    float2 direction=metric/max(0.0001,distance);
+    return float2(direction.x/max(0.001,touch_aspect),
+                  direction.y)*displacement*0.012;
+}
+float2 expanding_ripple(float2 uv,float4 ripple) {
+    if(ripple.w<=0.0||ripple.z<0.0||ripple.z>=1.6)
+        return float2(0.0,0.0);
+    float2 from=uv-ripple.xy;
+    float2 metric=float2(from.x*touch_aspect,from.y);
+    float distance=length(metric);
+    float width=max(0.006,touch_radius*0.22);
+    // The wavefront travels away from the *saved* fingertip position.
+    // No current-finger drift after the impulse has been emitted.
+    float front=ripple.z*(0.10+touch_speed*0.11);
+    float band=(distance-front)/width;
+    float envelope=exp(-band*band*1.6);
+    float decay=saturate(1.0-ripple.z/1.6);
+    float phase=band*6.2831853*max(0.5,touch_waves*0.55);
+    float displacement=sin(phase)*envelope*decay*decay*
+                       touch_strength*ripple.w*0.016;
+    float2 direction=metric/max(0.0001,distance);
+    return float2(direction.x/max(0.001,touch_aspect),direction.y)*displacement;
+}
+float4 PSMain(VSOutput v_in) : TARGET {
+    float2 uv=v_in.uv;
+    float2 shift=bend(uv,fingertip0)+bend(uv,fingertip1);
+    shift+=expanding_ripple(uv,ripple0);
+    shift+=expanding_ripple(uv,ripple1);
+    shift+=expanding_ripple(uv,ripple2);
+    shift+=expanding_ripple(uv,ripple3);
+    shift+=expanding_ripple(uv,ripple4);
+    shift+=expanding_ripple(uv,ripple5);
+    shift+=expanding_ripple(uv,ripple6);
+    shift+=expanding_ripple(uv,ripple7);
+    return original_frame.Sample(sample_source,saturate(uv+shift));
+}
+technique Draw {
+    pass {vertex_shader=VSMain(v_in);pixel_shader=PSMain(v_in);}
+}

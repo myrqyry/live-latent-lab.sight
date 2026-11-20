@@ -1,0 +1,29 @@
+// Sight Privacy V2: pixelate detected face regions over the live camera.
+ // No full-frame blackout or inferred streamer identity.
+uniform float4x4 ViewProj;
+uniform texture2d image;
+uniform texture2d privacy_mask;
+uniform texture2d privacy_text_mask;
+uniform float2 image_size;
+uniform float block_px;
+sampler_state linear_sample {Filter=Linear;AddressU=Clamp;AddressV=Clamp;};
+sampler_state point_sample {Filter=Point;AddressU=Clamp;AddressV=Clamp;};
+struct VSInput {float4 pos:POSITION;float2 uv:TEXCOORD0;};
+struct VSOutput {float4 pos:POSITION;float2 uv:TEXCOORD0;};
+VSOutput VSMain(VSInput v_in) {
+ VSOutput v;v.pos=mul(float4(v_in.pos.xyz,1.0),ViewProj);v.uv=v_in.uv;return v;
+}
+float4 PSMain(VSOutput v_in):TARGET {
+ float4 original=image.Sample(linear_sample,v_in.uv);
+ // Text secrecy needs opaque coverage; face mosaics alone may leave glyphs readable.
+ if(privacy_text_mask.Sample(point_sample,v_in.uv).r>=0.5)
+   return float4(0.0,0.0,0.0,original.a);
+ if(privacy_mask.Sample(point_sample,v_in.uv).r<0.5)return original;
+ float2 blocks=max(float2(1.0,1.0),image_size/max(1.0,block_px));
+ float2 cell=(floor(v_in.uv*blocks)+0.5)/blocks;
+ // The spatially constant mosaic is a stronger concealment than a
+ // cosmetic blur: nearby pixels cannot reconstruct facial detail.
+ float3 concealed=image.Sample(linear_sample,saturate(cell)).rgb;
+ return float4(concealed,original.a);
+}
+technique Draw {pass {vertex_shader=VSMain(v_in);pixel_shader=PSMain(v_in);}}

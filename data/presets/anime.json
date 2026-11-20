@@ -1,0 +1,7 @@
+{
+    "name": "Anime Style",
+    "prompt": "anime art style, vibrant colors, cel shaded, manga",
+    "strength": 0.8,
+    "steps": 25,
+    "scale": 0.6
+}

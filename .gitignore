@@ -1,0 +1,78 @@
+# OBS Studio Plugin: Build & IDE
+/build/
+/build_*/
+/build-verified/
+/build-aux/
+CMakeFiles*/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.o
+*.obj
+*.so
+*.dll
+*.exe
+*.a
+*.lib
+*.pch
+*.pdb
+*.ilk
+*.user
+*.suo
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.opendb
+*.DS_Store
+*.vscode/
+compile_commands.json
+# Qt Creator
+*.pro.user*
+*.qbs.user*
+*.qmlproject.user*
+# CLion
+.idea/
+cmake-build-*/
+# VS Code
+.vscode/
+# OS
+.DS_Store
+Thumbs.db
+# Logs
+*.log
+# Python
+__pycache__/
+*.pyc
+# Misc
+*.swp
+*.bak
+*.tmp
+# Clangd cache
+.cache/clangd/
+# Ignore package output
+*.deb
+obs-plugintemplate.wiki
+
+# Models
+*.onnx
+models/style/
+# 3rdparty
+# libfacedetection is BSD-3-Clause vendored source, tracked for reproducible builds
+repomix-output.md
+CODE_REVIEW.md
+docs/superpowers/
+
+superpowers/
+
+.superpowers/
+# meristem:local-ignore:start
+.meristem/local/
+# meristem:local-ignore:end
+
+/build-public/
+/stage/
+.env
+.env.*
+*.tflite
+*.task
+*.gguf

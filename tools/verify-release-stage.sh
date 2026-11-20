@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Check the install contents using a new private staging prefix.
+# No changes to live OBS, system libraries, or any user's home plugin files.
+set -euo pipefail
+if [[ "$#" != 1 ]]; then
+  echo "usage: $0 build-directory" >&2
+  exit 2
+fi
+build="$(realpath "$1")"
+if [[ ! -f "$build/CMakeCache.txt" ]]; then
+  echo "Not a configured Sight build: $build" >&2
+  exit 2
+fi
+stage="$(mktemp -d /tmp/sight-release-stage-XXXXXX)"
+trap 'rm -rf -- "$stage"' EXIT
+prefix="$stage/package"
+cmake --install "$build" --prefix "$prefix" > "$stage/install.log"
+require_file() {
+  if [[ ! -s "$prefix/$1" ]]; then
+    echo "RELEASE_STAGE_MISSING=$1" >&2
+    exit 1
+  fi
+}
+require_file "bin/64bit/live-latent-lab-sight.so"
+require_file "bin/64bit/libonnxruntime.so.1.17.1"
+require_file "data/sight-tracking-overlay.effect"
+require_file "data/sight-depth-camera.effect"
+require_file "data/locale/en-US.ini"
+require_file "data/licenses/onnxruntime/LICENSE"
+require_file "data/licenses/onnxruntime/ThirdPartyNotices.txt"
+require_file "data/licenses/libfacedetection/LICENSE"
+require_file "data/licenses/tinygltf/LICENSE"
+require_file "data/licenses/stb/LICENSE"
+if [[ -e "$prefix/bin/64bit/libmediapipe.so" ]]; then
+  require_file "data/licenses/mediapipe/LICENSE"
+  echo "SIGHT_STAGE_MEDIAPIPE_INCLUDED=YES (redistribution rights still require review)"
+else
+  echo "SIGHT_STAGE_MEDIAPIPE_INCLUDED=NO (face/body/hand require a separate runtime)"
+fi
+if find "$prefix" -type f \( -name '*.onnx' -o -name '*.task' \) -print -quit | grep -q .; then
+  echo "RELEASE_STAGE_UNEXPECTED_MODEL_BUNDLE=YES" >&2
+  exit 1
+fi
+if ! readelf -d "$prefix/bin/64bit/live-latent-lab-sight.so" |
+    grep -E 'RPATH|RUNPATH' | grep -Fq "\$ORIGIN"; then
+  echo "RELEASE_STAGE_NON_RELOCATABLE_RPATH=YES" >&2
+  exit 1
+fi
+echo "SIGHT_RELEASE_STAGE_FILES=$(find "$prefix" -type f | wc -l)"
+echo "SIGHT_RELEASE_STAGE_BYTES=$(du -sb "$prefix" | awk '{print $1}')"
+echo "SIGHT_RELEASE_STAGE_CONTENTS_PASS=1"
+echo "This is technical staging only; NOT a public redistribution approval."

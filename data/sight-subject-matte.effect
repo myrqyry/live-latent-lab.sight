@@ -1,0 +1,134 @@
+// Sight Subject Cutout: retain native-resolution source RGB while applying
+// an independently generated, lower-resolution foreground matte on the GPU.
+uniform float4x4 ViewProj;
+uniform texture2d original_frame;
+uniform texture2d segmentation_mask;
+// 0=cutout (original behavior), 1=background spotlight, 2=warm subject,
+// 3=subject silhouette glow. These are GPU treatments of U2Net's matte,
+// not semantic object localization or temporal tracking.
+uniform int treatment_mode;
+uniform float treatment_strength;
+uniform float2 mask_texel;
+uniform bool refine_edges;
+uniform float matte_gamma;
+uniform float matte_low;
+uniform float matte_high;
+uniform int matte_view;
+
+sampler_state linear_clamp
+{
+    Filter = Linear;
+    AddressU = Clamp;
+    AddressV = Clamp;
+};
+
+struct VSInput
+{
+    float4 position : POSITION;
+    float2 uv : TEXCOORD0;
+};
+
+struct VSOutput
+{
+    float4 position : POSITION;
+    float2 uv : TEXCOORD0;
+};
+
+VSOutput VSMain(VSInput v_in)
+{
+    VSOutput transformed;
+    transformed.position = mul(float4(v_in.position.xyz, 1.0), ViewProj);
+    transformed.uv = v_in.uv;
+    return transformed;
+}
+
+// Joint bilateral upsampling: weight the four surrounding low-resolution
+// matte samples by both bilinear distance and native-resolution RGB similarity.
+// This is a small single-pass alternative to the multipass fast guided filter.
+float edge_weight(float3 guide, float2 uv)
+{
+    float3 difference = original_frame.Sample(linear_clamp, uv).rgb - guide;
+    return 1.0 / (1.0 + 64.0 * dot(difference, difference));
+}
+
+float sample_refined_matte(float2 uv)
+{
+    uv = saturate(uv);
+    float base = saturate(segmentation_mask.Sample(linear_clamp, uv).r);
+    if (!refine_edges || base <= 0.0 || base >= 1.0)
+        return base;
+    float2 cell = uv / mask_texel - 0.5;
+    float2 fraction = cell - floor(cell);
+    float2 p00 = (floor(cell) + 0.5) * mask_texel;
+    float2 p10 = p00 + float2(mask_texel.x, 0.0);
+    float2 p01 = p00 + float2(0.0, mask_texel.y);
+    float2 p11 = p00 + mask_texel;
+    float3 guide = original_frame.Sample(linear_clamp, uv).rgb;
+    float4 w = float4((1.0-fraction.x)*(1.0-fraction.y),
+                      fraction.x*(1.0-fraction.y),
+                      (1.0-fraction.x)*fraction.y,
+                      fraction.x*fraction.y);
+    w *= float4(edge_weight(guide,p00), edge_weight(guide,p10),
+                edge_weight(guide,p01), edge_weight(guide,p11));
+    float4 values = float4(segmentation_mask.Sample(linear_clamp,p00).r,
+                           segmentation_mask.Sample(linear_clamp,p10).r,
+                           segmentation_mask.Sample(linear_clamp,p01).r,
+                           segmentation_mask.Sample(linear_clamp,p11).r);
+    return saturate(dot(w, values) / max(dot(w, float4(1.0,1.0,1.0,1.0)), 0.000001));
+}
+
+float sample_matte(float2 uv)
+{
+    float alpha = sample_refined_matte(uv);
+    if (matte_gamma == 1.0 && matte_low == 0.0 && matte_high == 1.0)
+        return alpha;
+    return saturate((pow(alpha, max(matte_gamma, 0.1)) - matte_low) /
+                    max(matte_high - matte_low, 0.001));
+}
+
+float4 PSMain(VSOutput v_in) : TARGET
+{
+    float4 source = original_frame.Sample(linear_clamp, v_in.uv);
+    if (matte_view == 4)
+        return source;
+    if (matte_view == 2 || matte_view == 3) {
+        float raw = segmentation_mask.Sample(linear_clamp, v_in.uv).r;
+        return float4(raw, raw, raw, 1.0);
+    }
+    float matte = sample_matte(v_in.uv);
+    if (matte_view == 1)
+        return float4(matte, matte, matte, 1.0);
+    if (treatment_mode == 0) {
+        // Preserve the original premultiplied-alpha cutout exactly.
+        return float4(source.rgb * matte, source.a * matte);
+    }
+    float strength = saturate(treatment_strength);
+    if (treatment_mode == 1) {
+        // Leave the foreground intact; de-emphasize only the surroundings.
+        float gray = dot(source.rgb, float3(0.2126, 0.7152, 0.0722));
+        float3 subdued = float3(gray, gray, gray) * 0.48;
+        return float4(lerp(source.rgb, subdued,
+                           strength * (1.0 - matte)), source.a);
+    }
+    if (treatment_mode == 2) {
+        float3 warmed = saturate(source.rgb * float3(1.12, 1.02, 0.86));
+        return float4(lerp(source.rgb, warmed, strength * matte), source.a);
+    }
+    // Halo is computed from the matte, not from a synthetic center vignette.
+    float around = max(
+        max(sample_matte(v_in.uv + float2(mask_texel.x, 0.0)),
+            sample_matte(v_in.uv - float2(mask_texel.x, 0.0))),
+        max(sample_matte(v_in.uv + float2(0.0, mask_texel.y)),
+            sample_matte(v_in.uv - float2(0.0, mask_texel.y))));
+    float halo = saturate(around - matte) * strength * 0.8;
+    return float4(saturate(source.rgb + float3(1.0, 0.70, 0.38) * halo), source.a);
+}
+
+technique Draw
+{
+    pass
+    {
+        vertex_shader = VSMain(v_in);
+        pixel_shader = PSMain(v_in);
+    }
+}
