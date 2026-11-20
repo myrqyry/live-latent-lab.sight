@@ -64,7 +64,6 @@ add_library(live-latent-lab-sight MODULE
     src/core/tracking_overlay.cpp
     src/core/tracking_signal_bus.cpp
     src/tracking-signal-receiver.cpp
-    src/touch-field-filter.cpp
     src/privacy-v2-filter.cpp
     src/fast-face-detector.cpp
     src/3rdparty/libfacedetection/facedetectcnn.cpp
@@ -209,14 +208,6 @@ endif()
 add_executable(sight_subject_motion_test tests/subject_motion_test.cpp)
 target_include_directories(sight_subject_motion_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 add_test(NAME sight_subject_motion_unit COMMAND sight_subject_motion_test)
-add_executable(sight_touch_field_signals_test tests/touch_field_signals_test.cpp)
-target_include_directories(sight_touch_field_signals_test PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src")
-add_test(NAME sight_touch_field_signal_unit COMMAND sight_touch_field_signals_test)
-add_executable(sight_touch_field_events_test tests/touch_field_events_test.cpp)
-target_include_directories(sight_touch_field_events_test PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src")
-add_test(NAME sight_touch_field_events_unit COMMAND sight_touch_field_events_test)
 find_program(SIGHT_XVFB_RUN NAMES xvfb-run)
 if(SIGHT_XVFB_RUN)
     # Real OBS video-render regression for optional manual text zones.
@@ -253,15 +244,6 @@ if(SIGHT_XVFB_RUN)
             "$<TARGET_FILE:sight_subject_treatments_gpu_test>"
             "${CMAKE_CURRENT_SOURCE_DIR}/data/sight-subject-matte.effect")
     set_tests_properties(sight_subject_treatments_gpu PROPERTIES TIMEOUT 30)
-    add_executable(sight_touch_ripple_gpu_test tests/obs_touch_ripple_gpu_test.cpp)
-    target_include_directories(sight_touch_ripple_gpu_test PRIVATE
-        "${SIGHT_OBS_INCLUDE}")
-    target_link_libraries(sight_touch_ripple_gpu_test PRIVATE
-        "${SIGHT_OBS_LIBRARY}")
-    add_test(NAME sight_touch_field_gpu_expanding_wave
-        COMMAND "${SIGHT_XVFB_RUN}" -a -s "-screen 0 1280x720x24"
-            "$<TARGET_FILE:sight_touch_ripple_gpu_test>"
-            "${CMAKE_CURRENT_SOURCE_DIR}/data/sight-touch-field.effect")
 endif()
 
 add_executable(sight_privacy_coverage_test tests/privacy_coverage_test.cpp)
@@ -924,7 +906,7 @@ if(SIGHT_ANIMEGAN_MODEL)
                         set_tests_properties(sight_tasks_obs_${kind} PROPERTIES
                             TIMEOUT 75
                             ENVIRONMENT
-                                "SIGHT_SMOKE_WIDTH=512;SIGHT_SMOKE_HEIGHT=512;SIGHT_SMOKE_EFFECT=sight_${kind}_motion_filter;SIGHT_SMOKE_TRACK_EDGE=512;SIGHT_SMOKE_EXPECT_TASK=${kind};SIGHT_SMOKE_TASK_RUNTIME=${SIGHT_MEDIAPIPE_LIB};SIGHT_SMOKE_IMAGE_PLUGIN=${SIGHT_IMAGE_SOURCE_MODULE};SIGHT_SMOKE_IMAGE_FILE=${SIGHT_MEDIAPIPE_TEST_IMAGE}")
+                                "SIGHT_SMOKE_WIDTH=512;SIGHT_SMOKE_HEIGHT=512;SIGHT_SMOKE_EFFECT=sight_unified_tracking_filter;SIGHT_SMOKE_TRACK_MODE=${kind};SIGHT_SMOKE_TRACK_EDGE=512;SIGHT_SMOKE_EXPECT_TASK=${kind};SIGHT_SMOKE_TASK_RUNTIME=${SIGHT_MEDIAPIPE_LIB};SIGHT_SMOKE_IMAGE_PLUGIN=${SIGHT_IMAGE_SOURCE_MODULE};SIGHT_SMOKE_IMAGE_FILE=${SIGHT_MEDIAPIPE_TEST_IMAGE}")
                     endforeach()
                 if(SIGHT_MEDIAPIPE_LIB AND SIGHT_GESTURE_MODEL AND SIGHT_GESTURE_TEST_IMAGE)
                     add_test(NAME sight_tasks_obs_hand
@@ -936,7 +918,7 @@ if(SIGHT_ANIMEGAN_MODEL)
                     set_tests_properties(sight_tasks_obs_hand PROPERTIES
                         TIMEOUT 90
                         ENVIRONMENT
-                            "SIGHT_SMOKE_WIDTH=512;SIGHT_SMOKE_HEIGHT=512;SIGHT_SMOKE_EFFECT=sight_hand_motion_filter;SIGHT_SMOKE_EXPECT_TASK=hand;SIGHT_SMOKE_TASK_RUNTIME=${SIGHT_MEDIAPIPE_LIB};SIGHT_SMOKE_IMAGE_PLUGIN=${SIGHT_IMAGE_SOURCE_MODULE};SIGHT_SMOKE_IMAGE_FILE=${SIGHT_GESTURE_TEST_IMAGE}")
+                            "SIGHT_SMOKE_WIDTH=512;SIGHT_SMOKE_HEIGHT=512;SIGHT_SMOKE_EFFECT=sight_unified_tracking_filter;SIGHT_SMOKE_TRACK_MODE=hand;SIGHT_SMOKE_EXPECT_TASK=hand;SIGHT_SMOKE_TASK_RUNTIME=${SIGHT_MEDIAPIPE_LIB};SIGHT_SMOKE_IMAGE_PLUGIN=${SIGHT_IMAGE_SOURCE_MODULE};SIGHT_SMOKE_IMAGE_FILE=${SIGHT_GESTURE_TEST_IMAGE}")
                     add_test(NAME sight_signals_obs_hand_receiver
                         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_obs_sight_render.sh"
                             "$<TARGET_FILE:sight_obs_effect_render_smoke>"
@@ -947,20 +929,10 @@ if(SIGHT_ANIMEGAN_MODEL)
                         TIMEOUT 90
                         ENVIRONMENT
                             "SIGHT_SMOKE_WIDTH=512;SIGHT_SMOKE_HEIGHT=512;SIGHT_SMOKE_EFFECT=sight_tracking_receiver_filter;SIGHT_SMOKE_SIGNAL_PRODUCER=hand;SIGHT_SMOKE_SIGNAL_CHANNEL=hand;SIGHT_SMOKE_EXPECT_TASK=hand;SIGHT_SMOKE_TASK_RUNTIME=${SIGHT_MEDIAPIPE_LIB};SIGHT_SMOKE_IMAGE_PLUGIN=${SIGHT_IMAGE_SOURCE_MODULE};SIGHT_SMOKE_IMAGE_FILE=${SIGHT_GESTURE_TEST_IMAGE}")
-                    add_test(NAME sight_touch_field_obs_hand
-                        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_obs_sight_render.sh"
-                            "$<TARGET_FILE:sight_obs_effect_render_smoke>"
-                            "$<TARGET_FILE:live-latent-lab-sight>"
-                            "${SIGHT_GESTURE_MODEL}"
-                            "${CMAKE_CURRENT_SOURCE_DIR}/data")
-                    set_tests_properties(sight_touch_field_obs_hand PROPERTIES
-                        TIMEOUT 90
-                        ENVIRONMENT
-                            "SIGHT_SMOKE_WIDTH=512;SIGHT_SMOKE_HEIGHT=512;SIGHT_SMOKE_EFFECT=sight_touch_field_filter;SIGHT_SMOKE_SIGNAL_PRODUCER=hand;SIGHT_SMOKE_EXPECT_TASK=hand;SIGHT_SMOKE_TASK_RUNTIME=${SIGHT_MEDIAPIPE_LIB};SIGHT_SMOKE_IMAGE_PLUGIN=${SIGHT_IMAGE_SOURCE_MODULE};SIGHT_SMOKE_IMAGE_FILE=${SIGHT_GESTURE_TEST_IMAGE}")
                     # Reproduces the live webcam bug: the native source is
                     # 640x360, but the model observes a 512x288 inference
                     # frame. Normalized landmarks must retain 640x360 source
-                    # metadata so Touch Field doesn't silently reject them.
+                    # metadata so downstream shader consumers can validate geometry.
                     # Test-only image is generated from the provided real
                     # hand fixture; no test image committed to source control.
                     find_program(SIGHT_TEST_CONVERT_BIN NAMES magick convert)
@@ -978,37 +950,17 @@ if(SIGHT_ANIMEGAN_MODEL)
                             message(FATAL_ERROR
                                 "Could not prepare real-hand 16:9 test image")
                         endif()
-                        add_test(NAME sight_touch_field_obs_native_wide
+                        add_test(NAME sight_signals_obs_hand_native_wide
                             COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_obs_sight_render.sh"
                                 "$<TARGET_FILE:sight_obs_effect_render_smoke>"
                                 "$<TARGET_FILE:live-latent-lab-sight>"
                                 "${SIGHT_GESTURE_MODEL}"
                                 "${CMAKE_CURRENT_SOURCE_DIR}/data")
-                        set_tests_properties(sight_touch_field_obs_native_wide PROPERTIES
+                        set_tests_properties(sight_signals_obs_hand_native_wide PROPERTIES
                             TIMEOUT 90
                             ENVIRONMENT
-                                "SIGHT_SMOKE_WIDTH=640;SIGHT_SMOKE_HEIGHT=360;SIGHT_SMOKE_EFFECT=sight_touch_field_filter;SIGHT_SMOKE_SIGNAL_PRODUCER=hand;SIGHT_SMOKE_EXPECT_TASK=hand;SIGHT_SMOKE_TASK_RUNTIME=${SIGHT_MEDIAPIPE_LIB};SIGHT_SMOKE_IMAGE_PLUGIN=${SIGHT_IMAGE_SOURCE_MODULE};SIGHT_SMOKE_IMAGE_FILE=${SIGHT_HAND_WIDE_IMAGE}")
+                                "SIGHT_SMOKE_WIDTH=640;SIGHT_SMOKE_HEIGHT=360;SIGHT_SMOKE_EFFECT=sight_tracking_receiver_filter;SIGHT_SMOKE_SIGNAL_PRODUCER=hand;SIGHT_SMOKE_SIGNAL_CHANNEL=hand;SIGHT_SMOKE_EXPECT_TASK=hand;SIGHT_SMOKE_TASK_RUNTIME=${SIGHT_MEDIAPIPE_LIB};SIGHT_SMOKE_IMAGE_PLUGIN=${SIGHT_IMAGE_SOURCE_MODULE};SIGHT_SMOKE_IMAGE_FILE=${SIGHT_HAND_WIDE_IMAGE}")
                     endif()
-                    add_test(NAME sight_touch_field_obs_continuous
-                        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_obs_sight_render.sh"
-                            "$<TARGET_FILE:sight_obs_effect_render_smoke>"
-                            "$<TARGET_FILE:live-latent-lab-sight>"
-                            "${SIGHT_GESTURE_MODEL}"
-                            "${CMAKE_CURRENT_SOURCE_DIR}/data")
-                    set_tests_properties(sight_touch_field_obs_continuous PROPERTIES
-                        TIMEOUT 90
-                        ENVIRONMENT
-                            "SIGHT_SMOKE_WIDTH=640;SIGHT_SMOKE_HEIGHT=360;SIGHT_SMOKE_EFFECT=sight_touch_field_filter;SIGHT_SMOKE_TOUCH_CONTINUITY=1;SIGHT_SMOKE_SIGNAL_PRODUCER=hand;SIGHT_SMOKE_EXPECT_TASK=hand;SIGHT_SMOKE_TASK_RUNTIME=${SIGHT_MEDIAPIPE_LIB};SIGHT_SMOKE_IMAGE_PLUGIN=${SIGHT_IMAGE_SOURCE_MODULE};SIGHT_SMOKE_IMAGE_FILE=${SIGHT_HAND_WIDE_IMAGE}")
-                    add_test(NAME sight_touch_field_obs_no_hand
-                        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_obs_sight_render.sh"
-                            "$<TARGET_FILE:sight_obs_effect_render_smoke>"
-                            "$<TARGET_FILE:live-latent-lab-sight>"
-                            "${SIGHT_GESTURE_MODEL}"
-                            "${CMAKE_CURRENT_SOURCE_DIR}/data")
-                    set_tests_properties(sight_touch_field_obs_no_hand PROPERTIES
-                        TIMEOUT 90
-                        ENVIRONMENT
-                            "SIGHT_SMOKE_WIDTH=512;SIGHT_SMOKE_HEIGHT=512;SIGHT_SMOKE_EFFECT=sight_touch_field_filter;SIGHT_SMOKE_EXPECT_PASSTHROUGH=1;SIGHT_SMOKE_IMAGE_PLUGIN=${SIGHT_IMAGE_SOURCE_MODULE};SIGHT_SMOKE_IMAGE_FILE=${SIGHT_GESTURE_TEST_IMAGE}")
                     add_test(NAME sight_value_router_obs_hand_pinch
                         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_obs_sight_render.sh"
                             "$<TARGET_FILE:sight_obs_effect_render_smoke>"
@@ -1203,7 +1155,7 @@ if(SIGHT_MEDIAPIPE_123_LIB AND SIGHT_HOLISTIC_MODEL AND
         set_tests_properties(sight_holistic_123_obs_overlay_${overlay_variant} PROPERTIES
             TIMEOUT 90
             ENVIRONMENT
-               "SIGHT_SMOKE_WIDTH=512;SIGHT_SMOKE_HEIGHT=512;SIGHT_SMOKE_EFFECT=sight_holistic_motion_filter;SIGHT_SMOKE_TRACK_EDGE=512;SIGHT_SMOKE_TASK_RUNTIME=${SIGHT_MEDIAPIPE_123_LIB};SIGHT_SMOKE_IMAGE_PLUGIN=${SIGHT_IMAGE_SOURCE_MODULE};SIGHT_SMOKE_IMAGE_FILE=${SIGHT_HOLISTIC_TEST_IMAGE};${overlay_args}")
+               "SIGHT_SMOKE_WIDTH=512;SIGHT_SMOKE_HEIGHT=512;SIGHT_SMOKE_EFFECT=sight_unified_tracking_filter;SIGHT_SMOKE_TRACK_MODE=holistic;SIGHT_SMOKE_TRACK_EDGE=512;SIGHT_SMOKE_TASK_RUNTIME=${SIGHT_MEDIAPIPE_123_LIB};SIGHT_SMOKE_IMAGE_PLUGIN=${SIGHT_IMAGE_SOURCE_MODULE};SIGHT_SMOKE_IMAGE_FILE=${SIGHT_HOLISTIC_TEST_IMAGE};${overlay_args}")
     endforeach()
 endif()
 
@@ -1224,11 +1176,11 @@ if(SIGHT_OBJECT_MODEL AND SIGHT_MEDIAPIPE_123_LIB AND
         set_tests_properties(sight_object_123_obs_${mode} PROPERTIES
             TIMEOUT 90
             ENVIRONMENT
-            "SIGHT_SMOKE_WIDTH=${SIGHT_OBJECT_TEST_WIDTH};SIGHT_SMOKE_HEIGHT=${SIGHT_OBJECT_TEST_HEIGHT};SIGHT_SMOKE_EFFECT=sight_object_tracking_filter;SIGHT_SMOKE_TRACK_EDGE=512;SIGHT_SMOKE_TASK_RUNTIME=${SIGHT_MEDIAPIPE_123_LIB};SIGHT_SMOKE_IMAGE_PLUGIN=${SIGHT_IMAGE_SOURCE_MODULE};SIGHT_SMOKE_IMAGE_FILE=${SIGHT_OBJECT_TEST_IMAGE};${object_extra}")
+            "SIGHT_SMOKE_WIDTH=${SIGHT_OBJECT_TEST_WIDTH};SIGHT_SMOKE_HEIGHT=${SIGHT_OBJECT_TEST_HEIGHT};SIGHT_SMOKE_EFFECT=sight_unified_tracking_filter;SIGHT_SMOKE_TRACK_MODE=object;SIGHT_SMOKE_TRACK_EDGE=512;SIGHT_SMOKE_TASK_RUNTIME=${SIGHT_MEDIAPIPE_123_LIB};SIGHT_SMOKE_IMAGE_PLUGIN=${SIGHT_IMAGE_SOURCE_MODULE};SIGHT_SMOKE_IMAGE_FILE=${SIGHT_OBJECT_TEST_IMAGE};${object_extra}")
     endforeach()
 endif()
 
-message(STATUS "Sight validated-effects build: PortraitSketch, U2Net, Depth, Face/Body/Hand/Holistic/Object Tasks, Touch Field; no diffusion/CUDA dependency")
+message(STATUS "Sight validated-effects build: PortraitSketch, U2Net, Depth, Unified face/body/hand/holistic/object tracking; no diffusion/CUDA dependency")
 message(STATUS "ONNX Runtime: ${SIGHT_ORT_LIBRARY}")
 
 # The language data is deliberately external to the plugin package. A

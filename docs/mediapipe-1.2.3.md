@@ -112,7 +112,7 @@ https://storage.googleapis.com/mediapipe-models/holistic_landmarker/holistic_lan
   as Thumb_Up. Holistic mask data must be copied/owned before exposing it
   to other components.
 
-The **LLL.sight Holistic Tracking (MediaPipe 1.2.3)** filter runs one
+The **LLL.sight Tracking → Holistic** filter runs one
 VIDEO graph, publishing synchronized Face/Body/Hand snapshots on
 independently named channels (defaults holistic/face, holistic/body,
 holistic/hand). Model weights and native runtime remain user-supplied.

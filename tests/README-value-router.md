@@ -21,7 +21,7 @@ at plugin startup or when the source or filter is unselected.
 
 ### Discovered input/output choices
 
-Discovery is shared with the native receiver, Touch Field, VRM and Live2D
+Discovery is shared with the native receiver, HyperShaderFX, VRM and Live2D
 property controls. Other OBS plugins can use the receiver's optional
 `sight_tracking_list_v1` procedure (caller-owned `obs_data_t *inventory`,
 `version=1`, `channels` array containing `channel`, `label`, `kind`,

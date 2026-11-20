@@ -1,6 +1,6 @@
 # Hand & Gesture Motion — verified Linux/OBS path
 
-**LLL.sight Hand & Gesture Motion (MediaPipe Tasks)** is a standalone OBS filter
+**LLL.sight Tracking → Hands & gestures (MediaPipe)** is a tracking mode
 backed by the **Gesture Recognizer**, which returns hand landmarks *and*
 built-in classifications from one model invocation.
 
@@ -41,9 +41,9 @@ The official MediaPipe gesture documentation provides image fixtures:
 - The Tracking Signal Receiver can draw the same hands on another OBS source
   without creating a second model. Coordinates remain normalized to producer
   framing.
-- Touch Field can consume the same published hand channel to create
+- HyperShaderFX Hand Ripples can consume the same published hand channel to create
   real OBS GPU refraction around detected index fingertips, without
-  another model. See [Touch Field](README-touch-field.md).
+  another model. See the [Hand Ripples transfer note](README-touch-field.md).
 - Value Router adds features: hand point X/Y, normalized pinch and confidence
   of a chosen built-in gesture category. Use hand number 0 or 1 and
   point index 0..20 for coordinates.

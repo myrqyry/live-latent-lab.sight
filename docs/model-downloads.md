@@ -35,7 +35,7 @@ float16/1 URL is in [Hand provenance](../tests/README-hands.md).
 
 ## Holistic model (MediaPipe 1.2.3 only)
 
-The development build's **LLL.sight Holistic Tracking (MediaPipe 1.2.3)**
+The development build's **LLL.sight Tracking → Holistic**
 OBS filter uses the [official Holistic float16 bundle](https://storage.googleapis.com/mediapipe-models/holistic_landmarker/holistic_landmarker/float16/latest/holistic_landmarker.task).
 Download it manually and select it in the model picker. Also select
 the verified native MediaPipe 1.2.3 runtime in its separate picker.
@@ -69,7 +69,7 @@ directory; the legacy MediaPipe C runtime is not compatible.
    than return simulated results; check the OBS log for load errors.
 
 Privacy V2 uses its included face detector. Tracking Signal Receiver,
-Value Router, and Touch Field can consume Sight's tracking data without
+Value Router, and HyperShaderFX can consume Sight's tracking data without
 loading an additional model.
 
 ## License and provenance distinctions

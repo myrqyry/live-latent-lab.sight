@@ -6,8 +6,8 @@ standalone object detector, not the Holistic pose graph.
 
 ## What is implemented
 
-- New OBS filter: LLL.sight Object Tracking (MediaPipe 1.2.3).
-- Filter ID: sight_object_tracking_filter.
+- Select Objects (MediaPipe) inside LLL.sight Tracking.
+- Filter ID: sight_unified_tracking_filter; mode: object.
 - Dedicated native MediaPipe 1.2.3 VIDEO Object Detector with explicit
   user-selected TFLite model. Defaults to Google EfficientDet-Lite0
   in Sight's persistent configuration models folder; it is not bundled.

@@ -220,7 +220,6 @@ struct TrackingFilter {
     obs_source_t *context=nullptr;
     std::atomic<bool> holistic{false},objects{false};
     Mode mode=Mode::Face; // protected by input_mutex; coherent with generation
-    bool unified=false;
     std::atomic<int> object_score{35};
     std::atomic<bool> logged_object_overlay{false};
     std::array<std::string,3> holistic_channels{};
@@ -389,7 +388,7 @@ void worker_main(TrackingFilter *f) {
 #endif
                 frame_dedup=sight::TrackingFrameDedup(holistic?3u:1u);
                 loaded_mode=mode;
-                if(f->unified)blog(LOG_INFO,"[Sight/Tracking] SIGHT_UNIFIED_MODE_20261118_U653 selected=%s previous model released",sight::tracking_mode_id(mode));
+                blog(LOG_INFO,"[Sight/Tracking] SIGHT_UNIFIED_MODE_20261118_U653 selected=%s previous model released",sight::tracking_mode_id(mode));
             }
 #ifdef SIGHT_HAVE_RTMW
             if(mode==Mode::Rtmw&&!rtmw_tracker)rtmw_tracker=std::make_unique<sight::RtmwTracker>();
@@ -411,7 +410,7 @@ void worker_main(TrackingFilter *f) {
                 : holistic
                     ? holistic_tracker.load(lib,model,f->holistic_person_mask.load(),native.holistic)
                     : tracker.load(lib,model,kind,native.tasks));
-            if(!success&&f->unified){
+            if(!success){
                 tracker.unload();holistic_tracker.unload();object_detector.unload();
 #ifdef SIGHT_HAVE_RTMW
                 // Preserve load diagnostics before destroying the failed GPU engine.
@@ -808,16 +807,11 @@ void worker_main(TrackingFilter *f) {
     }
 }
 
-void* create_common(obs_data_t *settings, obs_source_t *source,
-                    sight::TrackingKind kind,bool holistic=false,bool objects=false,
-                    bool unified=false,Mode selected=Mode::None) {
+void* create_common(obs_data_t *settings, obs_source_t *source,Mode selected) {
     auto *f=new TrackingFilter;
+    const bool holistic=selected==Mode::Holistic,objects=selected==Mode::Object;
     f->context=source;f->holistic=holistic;f->objects=objects;
-    f->unified=unified;
-    f->mode=unified?selected:holistic?Mode::Holistic:objects?Mode::Object:
-        kind==sight::TrackingKind::WholeBody?Mode::Rtmw:
-        kind==sight::TrackingKind::Hand?Mode::Hand:
-        kind==sight::TrackingKind::Body?Mode::Body:Mode::Face;
+    f->mode=selected;
     f->requested_options=native_options(settings,f->mode);
     if(objects)f->object_score=int(std::clamp<int64_t>(
         obs_data_get_int(settings,OBJECT_SCORE),25,95));
@@ -855,7 +849,7 @@ void* create_common(obs_data_t *settings, obs_source_t *source,
     f->loading=!f->requested_model.empty();
     ++f->generation;
     f->worker=std::thread(worker_main,f);
-    if(objects||unified) {
+    {
         if(auto* procs=obs_source_get_proc_handler(source))
             proc_handler_add(procs,
                 "void sight_object_read_v1(out string objects_json, out int count, "
@@ -865,26 +859,6 @@ void* create_common(obs_data_t *settings, obs_source_t *source,
     if(f->loading)f->cv.notify_one();
     return f;
 }
-void *create_face(obs_data_t *settings,obs_source_t *source) {
-    return create_common(settings,source,sight::TrackingKind::Face);
-}
-void *create_body(obs_data_t *settings,obs_source_t *source) {
-    return create_common(settings,source,sight::TrackingKind::Body);
-}
-void *create_hand(obs_data_t *settings,obs_source_t *source) {
-    return create_common(settings,source,sight::TrackingKind::Hand);
-}
-void *create_holistic(obs_data_t *settings,obs_source_t *source) {
-    return create_common(settings,source,sight::TrackingKind::Face,true);
-}
-void *create_objects(obs_data_t *settings,obs_source_t *source) {
-    return create_common(settings,source,sight::TrackingKind::Face,false,true);
-}
-#ifdef SIGHT_HAVE_RTMW
-void* create_rtmw(obs_data_t* settings,obs_source_t* source) {
-    return create_common(settings,source,sight::TrackingKind::WholeBody);
-}
-#endif
 void destroy(void *data) {
     auto *f=static_cast<TrackingFilter*>(data);
     if(!f)return;
@@ -1033,11 +1007,6 @@ void update_mode(TrackingFilter* f,obs_data_t *settings,Mode selected) {
     }
     f->cv.notify_one();
 }
-void update(void* data,obs_data_t* settings){
-    auto* f=static_cast<TrackingFilter*>(data);
-    // Legacy instances never change mode.
-    update_mode(f,settings,f->mode);
-}
 void defaults_face(obs_data_t *settings) {
     const auto dir=models_dir();
     obs_data_set_default_string(settings,MODEL_PATH,
@@ -1145,20 +1114,18 @@ void add_rtmw_properties(obs_properties_t* p,const std::string& prefix) {
 
     add_native_properties(p,Mode::Rtmw,prefix);
 }
-obs_properties_t* rtmw_properties(void*) {auto* p=obs_properties_create();add_rtmw_properties(p,"");return p;}
-const char* name_rtmw(void*){return "LLL.sight WholeBody Tracking (RTMW GPU)";}
 #endif
-void add_properties(obs_properties_t* p,TrackingFilter* f,Mode mode,const std::string& prefix) {
+void add_properties(obs_properties_t* p,obs_data_t* settings,Mode mode,const std::string& prefix) {
     const bool holistic=mode==Mode::Holistic,objects=mode==Mode::Object;
     const auto kind=kind_for(mode);
     auto key=[&](const char* k){return prefix+k;};
     const auto dir=models_dir();
     std::string default_dir=dir;
-    if(f) {
-        std::lock_guard lock(f->input_mutex);
+    if(settings) {
         std::error_code ec;
-        if(std::filesystem::is_regular_file(f->requested_model,ec))
-            default_dir=std::filesystem::path(f->requested_model).parent_path().string();
+        const std::filesystem::path model_path=obs_data_get_string(settings,key(MODEL_PATH).c_str());
+        if(std::filesystem::is_regular_file(model_path,ec))
+            default_dir=model_path.parent_path().string();
     }
     auto *model=obs_properties_add_path(p,key(MODEL_PATH).c_str(),
         objects?"MediaPipe Object Detector model":"MediaPipe Tasks .task model",
@@ -1266,14 +1233,11 @@ void add_properties(obs_properties_t* p,TrackingFilter* f,Mode mode,const std::s
         auto* overlay=obs_properties_add_bool(p,key(DRAW_OVERLAY).c_str(),"Show tracking overlay here");
         obs_property_set_long_description(overlay,
             "Uncheck to publish landmarks and expression signals invisibly. "
-            "A separate Sight: Tracking Signal Receiver can display this channel. "
+            "A separate LLL.sight Tracking Signal Receiver can display this channel. "
             "Channel names must be unique for each producer.");
     }
 
     add_native_properties(p,mode,prefix);
-}
-template<Mode M>obs_properties_t* properties(void* data){
-    auto* p=obs_properties_create();add_properties(p,static_cast<TrackingFilter*>(data),M,"");return p;
 }
 constexpr const char* string_keys[]={MODEL_PATH,RUNTIME_PATH,RTMW_DETECTOR,CHANNEL,FACE_CHANNEL,BODY_CHANNEL,HAND_CHANNEL};
 constexpr const char* int_keys[]={CADENCE,SMOOTH,EDGE,FACE_QUALITY,HOLISTIC_OVERLAY_MODE,STABILITY_MODE,MIN_CONFIDENCE,OBJECT_SCORE,RTMW_BACKEND,DETECTION_CONF,PRESENCE_CONF,TRACKING_CONF,MAX_HANDS,H_FACE_DETECT,H_FACE_SUPPRESS,H_FACE_PRESENCE,H_HAND_LANDMARKS,H_POSE_DETECT,H_POSE_SUPPRESS,H_POSE_PRESENCE,PERSON_CONF,MAX_OBJECTS};
@@ -1318,7 +1282,7 @@ obs_data_t* unified_selection(obs_data_t* d,Mode mode){
 void* create_unified(obs_data_t* d,obs_source_t* source){
     auto mode=sight::parse_tracking_mode(obs_data_get_string(d,"tracking_mode"));
     auto* tmp=unified_selection(d,mode);
-    auto* f=create_common(tmp,source,kind_for(mode),mode==Mode::Holistic,mode==Mode::Object,true,mode);
+    auto* f=create_common(tmp,source,mode);
     obs_data_release(tmp);return f;
 }
 void update_unified(void* data,obs_data_t* d){
@@ -1341,6 +1305,7 @@ obs_properties_t* unified_properties(void* data){
     auto* p=obs_properties_create();
     auto* selector=obs_properties_add_list(p,"tracking_mode","Tracker",OBS_COMBO_TYPE_LIST,OBS_COMBO_FORMAT_STRING);
     obs_property_list_add_string(selector,"Off (release model)","none");
+    auto* settings=data?obs_source_get_settings(static_cast<TrackingFilter*>(data)->context):nullptr;
     for(auto mode:sight::tracking_modes){
         const char* label=mode==Mode::Face?"Face (MediaPipe)":mode==Mode::Body?"Body (MediaPipe)":
           mode==Mode::Hand?"Hands & gestures (MediaPipe)":mode==Mode::Holistic?"Holistic (face, body, hands)":
@@ -1350,8 +1315,9 @@ obs_properties_t* unified_properties(void* data){
 #ifdef SIGHT_HAVE_RTMW
         if(mode==Mode::Rtmw){add_rtmw_properties(p,prefix);continue;}
 #endif
-        add_properties(p,nullptr,mode,prefix);
+        add_properties(p,settings,mode,prefix);
     }
+    if(settings)obs_data_release(settings);
     auto selected=Mode::Face;
     if(data){
         auto* f=static_cast<TrackingFilter*>(data);
@@ -1370,11 +1336,6 @@ obs_properties_t* unified_properties(void* data){
     return p;
 }
 const char* name_unified(void*){return "LLL.sight Tracking";}
-const char* name_face(void*) {return "LLL.sight Face Motion (MediaPipe Tasks)";}
-const char* name_body(void*) {return "LLL.sight Body Motion (MediaPipe Tasks)";}
-const char* name_hand(void*) {return "LLL.sight Hand & Gesture Motion (MediaPipe Tasks)";}
-const char* name_holistic(void*) {return "LLL.sight Holistic Tracking (MediaPipe 1.2.3)";}
-const char* name_objects(void*) {return "LLL.sight Object Tracking (MediaPipe 1.2.3)";}
 void render(void *data,gs_effect_t*) {
     auto *f=static_cast<TrackingFilter*>(data);
     auto *target=obs_filter_get_target(f->context);
@@ -1494,62 +1455,6 @@ void render(void *data,gs_effect_t*) {
         blog(LOG_INFO,"[Sight/Holistic] SIGHT_HOLISTIC_GPU_OVERLAY_20261112_J728 composite frame drawn");
 }
 } // namespace
-
-struct obs_source_info sight_face_motion_filter_info = {
-    .id="sight_face_motion_filter",
-    .type=OBS_SOURCE_TYPE_FILTER,
-    .output_flags=OBS_SOURCE_VIDEO|OBS_SOURCE_CUSTOM_DRAW,
-    .get_name=name_face,.create=create_face,.destroy=destroy,
-    .get_defaults=defaults_face,.get_properties=properties<Mode::Face>,
-    .update=update,.video_render=render,
-};
-struct obs_source_info sight_body_motion_filter_info = {
-    .id="sight_body_motion_filter",
-    .type=OBS_SOURCE_TYPE_FILTER,
-    .output_flags=OBS_SOURCE_VIDEO|OBS_SOURCE_CUSTOM_DRAW,
-    .get_name=name_body,.create=create_body,.destroy=destroy,
-    .get_defaults=defaults_body,.get_properties=properties<Mode::Body>,
-    .update=update,.video_render=render,
-};
-
-struct obs_source_info sight_hand_motion_filter_info = {
-    .id="sight_hand_motion_filter",
-    .type=OBS_SOURCE_TYPE_FILTER,
-    .output_flags=OBS_SOURCE_VIDEO|OBS_SOURCE_CUSTOM_DRAW,
-    .get_name=name_hand,.create=create_hand,.destroy=destroy,
-    .get_defaults=defaults_hand,.get_properties=properties<Mode::Hand>,
-    .update=update,.video_render=render,
-};
-
-
-struct obs_source_info sight_holistic_motion_filter_info = {
-    .id="sight_holistic_motion_filter",
-    .type=OBS_SOURCE_TYPE_FILTER,
-    .output_flags=OBS_SOURCE_VIDEO|OBS_SOURCE_CUSTOM_DRAW,
-    .get_name=name_holistic,.create=create_holistic,.destroy=destroy,
-    .get_defaults=defaults_holistic,.get_properties=properties<Mode::Holistic>,
-    .update=update,.video_render=render,
-};
-
-struct obs_source_info sight_object_tracking_filter_info = {
-    .id="sight_object_tracking_filter",
-    .type=OBS_SOURCE_TYPE_FILTER,
-    .output_flags=OBS_SOURCE_VIDEO|OBS_SOURCE_CUSTOM_DRAW,
-    .get_name=name_objects,.create=create_objects,.destroy=destroy,
-    .get_defaults=defaults_objects,.get_properties=properties<Mode::Object>,
-    .update=update,.video_render=render,
-};
-
-#ifdef SIGHT_HAVE_RTMW
-struct obs_source_info sight_rtmw_tracking_filter_info = {
-    .id="sight_rtmw_tracking_filter",
-    .type=OBS_SOURCE_TYPE_FILTER,
-    .output_flags=OBS_SOURCE_VIDEO|OBS_SOURCE_CUSTOM_DRAW,
-    .get_name=name_rtmw,.create=create_rtmw,.destroy=destroy,
-    .get_defaults=defaults_rtmw,.get_properties=rtmw_properties,
-    .update=update,.video_render=render,
-};
-#endif
 
 struct obs_source_info sight_unified_tracking_filter_info = {
     .id="sight_unified_tracking_filter",

@@ -22,3 +22,30 @@ inference, receiver/router controls and the real six-mode Unified Tracking
 switch test. The separate GPU configuration is not a claim that all 98
 tests were rerun in that configuration. Native Live2D remained excluded.
 External runtime acquisition and redistribution are still separate gates.
+
+## Consolidated Tracking and Hand Ripples ownership
+
+The expanded public candidate now exposes ten source/filter registrations
+(including optional OCR, spatial motion and native VRM). Face, body, hand,
+holistic, object and optional RTMW remain modes of LLL.sight Tracking; the
+six redundant development-only registration types and compatibility
+branches have been removed. The mode-specific model browser remembers its
+selected model directory. Receiver/router/channel discovery and older
+integration fixtures now use the unified source.
+
+Hand Ripples moved into HyperShaderFX (local commit e0286f6). Sight no
+longer registers or ships Touch Field; its shader/consumer tests moved
+with the effect. The native-wide hand snapshot producer test remains.
+Final serial GPU-profile CTest: 92/92 passed, including real six-mode
+switching and native-wide hand receiver. An earlier parallel 98-test pass
+had one spatial-motion failure; the isolated retry and final serial suite
+passed, but the earlier variability was not diagnosed. Release staging
+passed (20 files, 78,686,935 bytes); licensing clearance is unchanged.
+The full HyperShaderFX Sight interop script passed with both rebuilt
+modules, including the real 640x360 hand model -> snapshot -> ripple
+shader path: 90 active frames, 89 evolving, and passthrough before signal
+and after expiry. The isolated HyperShaderFX test logs a pre-existing
+double-destroy/UI-dispatch warning, also observed with its older binary
+and Hand Highlights. Teardown warning is unresolved, not a clean-runtime
+claim. Physical webcam and normal interactive OBS UI were not tested.
+No installation or publication.

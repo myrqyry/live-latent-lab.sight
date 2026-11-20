@@ -1,7 +1,7 @@
 # Tests
 
 The default build contains real PortraitSketch, U²-Net, Depth Anything,
-MediaPipe Tasks, Touch Field, and Privacy V2 inference plus OBS graphics
+MediaPipe Tasks, and Privacy V2 inference plus OBS graphics
 smoke tests. The experimental full build also contains the older LiteRT, Stable
 Diffusion and other processor tests.
 
@@ -12,7 +12,7 @@ regression checks; tests register only when their models, fixtures, and the
 pinned MediaPipe runtime are present. The OBS smoke runs through the actual
 plugin with an OpenGL context provided by `xvfb-run`, checks that **exactly
 the verified Sight filter set is registered** (Portrait Sketch, Subject
-Cutout, Depth Camera, Face/Body/Hand Motion, Touch Field, Privacy V2,
+Cutout, Depth Camera, Tracking, Privacy V2,
 Tracking Signal Receiver, Value Router) and the output video differs from
 the input. See the main `README.md` for the full flag list.
 

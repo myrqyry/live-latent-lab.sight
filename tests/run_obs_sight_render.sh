@@ -44,17 +44,6 @@ if [[ -n "${SIGHT_SMOKE_ROUTER_GATE:-}" ]] &&
     echo 'FAIL: threshold gate identity marker absent' >&2
     exit 1
 fi
-if [[ "${SIGHT_SMOKE_EFFECT:-}" == "sight_touch_field_filter" ]]; then
-    if [[ -n "${SIGHT_SMOKE_EXPECT_PASSTHROUGH:-}" ]]; then
-        if grep -Fq 'First live hand-driven GPU refraction' "$log"; then
-            echo 'FAIL: Touch Field rendered without a valid hand' >&2
-            exit 1
-        fi
-    elif ! grep -Fq 'First live hand-driven GPU refraction:' "$log"; then
-        echo 'FAIL: Touch Field never consumed a valid hand tracking signal' >&2
-        exit 1
-    fi
-fi
 if [[ "${SIGHT_SMOKE_EFFECT:-}" == "sight_tracking_receiver_filter" ]] &&
     ! grep -Fq 'First shared tracking signal' "$log"; then
     echo "FAIL: no cross-instance tracking signal consumed" >&2

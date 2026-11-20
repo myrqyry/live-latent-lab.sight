@@ -6,12 +6,14 @@ interactions. This is a local public-release candidate, not a published release.
 ## Linux x86_64 candidate
 
 The validated build includes subject cutout, depth, portrait sketch,
-face/body/hand/holistic/object tracking, unified tracking, a tracking
-signal receiver, value routing, touch-field effects, privacy experiments,
+a single Tracking filter (face, body, hands, holistic and objects), a tracking
+signal receiver, value routing, privacy experiments,
 and native VRM avatars. Spatial motion and text obfuscation depend on
 optional system libraries. The optional GPU whole-body path needs a
 separate LiteRT configuration. Native Live2D needs the private SDK and
-is not part of this candidate. Legacy generative effects remain gated.
+is not part of this candidate. Legacy generative effects remain gated. Add multiple Tracking instances when
+multiple models are needed simultaneously. Hand Ripples is now a HyperShaderFX
+shader consuming the existing Sight hand channel, not a separate Sight filter.
 
 Model-backed effects require separately acquired compatible models and
 runtime libraries. See [model setup](docs/model-downloads.md) and
@@ -64,4 +66,4 @@ Runtime notices, model terms, clean-machine acceptance and package
 compatibility must be reviewed before publication. Windows and macOS
 are not certified.
 
-In OBS, sources and filters use the `LLL.sight` display-name prefix. Existing internal OBS source IDs are unchanged.
+In OBS, sources and filters use the `LLL.sight` display-name prefix. The public candidate exposes only the consolidated tracking source; obsolete development-only tracking and ripple registrations are removed.

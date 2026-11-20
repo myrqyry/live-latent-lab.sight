@@ -52,6 +52,29 @@ void smoke_drain_ui()
         t.first(t.second);
 }
 
+// Test fixtures express tracker settings independently of the selected mode.
+obs_data_t* tracking_settings(obs_data_t* raw,const std::string& mode) {
+    auto* result=obs_data_create();
+    obs_data_set_string(result,"tracking_mode",mode.c_str());
+    for(auto* item=obs_data_first(raw);item;obs_data_item_next(&item)){
+        const auto key=mode+"_"+obs_data_item_get_name(item);
+        switch(obs_data_item_gettype(item)){
+        case OBS_DATA_STRING:obs_data_set_string(result,key.c_str(),obs_data_item_get_string(item));break;
+        case OBS_DATA_BOOLEAN:obs_data_set_bool(result,key.c_str(),obs_data_item_get_bool(item));break;
+        case OBS_DATA_NUMBER:
+            if(obs_data_item_numtype(item)==OBS_DATA_NUM_INT)obs_data_set_int(result,key.c_str(),obs_data_item_get_int(item));
+            else obs_data_set_double(result,key.c_str(),obs_data_item_get_double(item));
+            break;
+        default:break;
+        }
+    }
+    return result;
+}
+obs_source_t* create_tracker(const char* name,obs_data_t* raw,const std::string& mode){
+    auto* settings=tracking_settings(raw,mode);
+    auto* result=obs_source_create("sight_unified_tracking_filter",name,settings,nullptr);
+    obs_data_release(settings);return result;
+}
 // Let CTest exercise square, landscape, portrait and misaligned aspect ratios.
 uint32_t W = 128, H = 128;
 struct Pattern { gs_texture_t *texture = nullptr; };
@@ -289,10 +312,10 @@ int main(int argc, char **argv)
     const char *name = nullptr;
     bool verified_only = true;
     bool found_sketch = false, found_u2net = false, found_depth = false;
-    bool found_face = false, found_body = false, found_receiver = false;
-    bool found_router = false, found_hand = false, found_touch = false;
-    bool found_privacy = false, found_holistic = false;
-    bool found_objects = false, found_ocr = false, found_flow = false, found_rtmw = false, found_unified = false;
+    bool found_receiver = false;
+    bool found_router = false;
+    bool found_privacy = false;
+    bool found_ocr = false, found_flow = false, found_unified = false;
     const char *selected_filter = std::getenv("SIGHT_SMOKE_EFFECT");
     if (!selected_filter || !*selected_filter)
         selected_filter = "neural_enhance_filter";
@@ -309,22 +332,8 @@ int main(int argc, char **argv)
             found_u2net = true;
         else if (std::strcmp(name, "sight_depth_filter") == 0)
             found_depth = true;
-        else if (std::strcmp(name, "sight_face_motion_filter") == 0)
-            found_face = true;
-        else if (std::strcmp(name, "sight_body_motion_filter") == 0)
-            found_body = true;
-        else if (std::strcmp(name, "sight_hand_motion_filter") == 0)
-            found_hand = true;
-        else if (std::strcmp(name, "sight_holistic_motion_filter") == 0)
-            found_holistic = true;
-        else if (std::strcmp(name, "sight_object_tracking_filter") == 0)
-            found_objects = true;
         else if(std::strcmp(name,"sight_unified_tracking_filter")==0)
             found_unified=true;
-        else if(std::strcmp(name,"sight_rtmw_tracking_filter")==0)
-            found_rtmw=true;
-        else if (std::strcmp(name, "sight_touch_field_filter") == 0)
-            found_touch = true;
         else if (std::strcmp(name,"sight_privacy_v2_filter")==0)
             found_privacy=true;
         else if (std::strcmp(name, "sight_tracking_receiver_filter") == 0)
@@ -358,33 +367,9 @@ int main(int argc, char **argv)
         obs_shutdown();
         return 1;
     }
-    const char *face_name = obs_source_get_display_name("sight_face_motion_filter");
-    const char *body_name = obs_source_get_display_name("sight_body_motion_filter");
-    const char *hand_name = obs_source_get_display_name("sight_hand_motion_filter");
-    if (!face_name || std::strcmp(face_name, "LLL.sight Face Motion (MediaPipe Tasks)") ||
-        !body_name || std::strcmp(body_name, "LLL.sight Body Motion (MediaPipe Tasks)") ||
-        !hand_name || std::strcmp(hand_name,"LLL.sight Hand & Gesture Motion (MediaPipe Tasks)")) {
-        std::cerr << "FAIL: MediaPipe Tasks filters missing or misnamed\n";
-        obs_shutdown();
-        return 1;
-    }
-    const char* holistic_name=obs_source_get_display_name("sight_holistic_motion_filter");
-    if(!holistic_name || std::strcmp(holistic_name,
-        "LLL.sight Holistic Tracking (MediaPipe 1.2.3)")) {
-        std::cerr<<"FAIL: Holistic producer missing or misnamed\n";
-        obs_shutdown();return 1;
-    }
-    const char* object_name=obs_source_get_display_name("sight_object_tracking_filter");
-    if(!object_name || std::strcmp(object_name,
-        "LLL.sight Object Tracking (MediaPipe 1.2.3)")) {
-        std::cerr<<"FAIL: Object Tracking filter missing or misnamed\n";
-        obs_shutdown();return 1;
-    }
-    const char* touch_name=obs_source_get_display_name("sight_touch_field_filter");
-    if(!touch_name||std::strcmp(touch_name,"LLL.sight Touch Field (Hand Ripples)")) {
-        std::cerr<<"FAIL: Touch Field filter is not registered correctly\n";
-        obs_shutdown();
-        return 1;
+    const auto* tracking_name=obs_source_get_display_name("sight_unified_tracking_filter");
+    if(!tracking_name||std::strcmp(tracking_name,"LLL.sight Tracking")){
+        std::cerr<<"FAIL: consolidated tracker missing\n";obs_shutdown();return 1;
     }
     const char* receiver_name=obs_source_get_display_name("sight_tracking_receiver_filter");
     if (!receiver_name || std::strcmp(receiver_name,"LLL.sight Tracking Signal Receiver")) {
@@ -413,17 +398,17 @@ int main(int argc, char **argv)
             obs_shutdown();return 1;
         }
     }
-    if (count != 14+size_t(found_ocr)+size_t(found_flow)+size_t(found_rtmw) || !verified_only || !found_unified || !found_objects || !found_holistic || !found_privacy || !found_touch || !found_sketch || !found_u2net ||
-        !found_depth || !found_face || !found_body || !found_hand ||
+    if (count != 8+size_t(found_ocr)+size_t(found_flow) || !verified_only || !found_unified ||
+        !found_privacy || !found_sketch || !found_u2net || !found_depth ||
         !found_receiver || !found_router) {
         std::cerr << "FAIL: expected exactly the verified Sight filter set\n";
-        obs_shutdown();
-        return 1;
+        obs_shutdown();return 1;
     }
-    const bool holistic_direct =
-        std::strcmp(selected_filter,"sight_holistic_motion_filter")==0;
-    const bool object_direct =
-        std::strcmp(selected_filter,"sight_object_tracking_filter")==0;
+    const bool tracking_direct=std::strcmp(selected_filter,"sight_unified_tracking_filter")==0;
+    const std::string tracking_mode=std::getenv("SIGHT_SMOKE_TRACK_MODE")?std::getenv("SIGHT_SMOKE_TRACK_MODE"):"face";
+    const auto tracking_key=[&](const char* key){return tracking_direct?tracking_mode+"_"+key:std::string(key);};
+    const bool holistic_direct=tracking_direct&&tracking_mode=="holistic";
+    const bool object_direct=tracking_direct&&tracking_mode=="object";
     const bool signal_receiver =
         std::strcmp(selected_filter, "sight_tracking_receiver_filter") == 0;
     const bool value_router =
@@ -431,8 +416,6 @@ int main(int argc, char **argv)
     const bool router_gate=value_router && std::getenv("SIGHT_SMOKE_ROUTER_GATE");
     const bool tracked_gate=router_gate && std::getenv("SIGHT_SMOKE_ROUTER_SIGNAL");
     bool gate_released_on_loss=false;
-    const bool touch_field =
-        std::strcmp(selected_filter, "sight_touch_field_filter") == 0;
     const bool privacy_v2 =
         std::strcmp(selected_filter,"sight_privacy_v2_filter")==0;
     const bool text_ocr=std::strcmp(selected_filter,"sight_text_obfuscation_filter")==0;
@@ -445,9 +428,9 @@ int main(int argc, char **argv)
     // Check the real OBS property metadata for the model browser, except for
     // the receiver which intentionally has no model (it never infers).
     auto *unconfigured = obs_get_source_properties(
-        (signal_receiver||value_router||touch_field||privacy_v2||text_ocr||spatial_flow) ?
-            "sight_face_motion_filter" : selected_filter);
-    const auto *picker = unconfigured ? obs_properties_get(unconfigured, "model_path") : nullptr;
+        (signal_receiver||value_router||privacy_v2||text_ocr||spatial_flow) ?
+            "sight_unified_tracking_filter" : selected_filter);
+    const auto *picker = unconfigured ? obs_properties_get(unconfigured, (signal_receiver||value_router||privacy_v2||text_ocr||spatial_flow)?"face_model_path":tracking_key("model_path").c_str()) : nullptr;
     const char *starting_folder = picker ? obs_property_path_default_path(
         const_cast<obs_property_t *>(picker)) : nullptr;
     if (!starting_folder || !std::filesystem::is_directory(starting_folder) ||
@@ -554,14 +537,6 @@ int main(int argc, char **argv)
             obs_data_set_double(settings,"gate_release",tracked_gate?.05:.45);
         }
     }
-    if(touch_field) {
-        obs_data_set_string(settings,"signal_channel","hand");
-        obs_data_set_double(settings,"touch_strength",2.75);
-        obs_data_set_double(settings,"touch_radius",.31);
-        obs_data_set_double(settings,"touch_waves",2.0);
-        obs_data_set_double(settings,"touch_speed",0);
-        obs_data_set_double(settings,"touch_pinch_boost",1.3);
-    }
     if(signal_receiver)
         obs_data_set_string(settings,"signal_channel",
             std::getenv("SIGHT_SMOKE_SIGNAL_CHANNEL") ?
@@ -606,7 +581,7 @@ int main(int argc, char **argv)
         obs_data_set_int(settings, "view_mode", 1);
         obs_data_set_int(settings, "fog_amount", std::atoi(fog));
     }
-    obs_source_t *filter = obs_source_create(selected_filter, "sight smoke filter", settings, nullptr);
+    obs_source_t *filter = tracking_direct?create_tracker("sight smoke filter",settings,tracking_mode):obs_source_create(selected_filter, "sight smoke filter", settings, nullptr);
     obs_data_release(settings);
     if (!source || !filter) {
         std::cerr << "Could not instantiate gradient source or AnimeGAN filter\n";
@@ -616,11 +591,11 @@ int main(int argc, char **argv)
         return 1;
     }
     auto *configured = obs_source_properties(filter);
-    auto *configured_picker = configured ? obs_properties_get(configured, "model_path") : nullptr;
+    auto *configured_picker = configured ? obs_properties_get(configured,tracking_key("model_path").c_str()) : nullptr;
     const char *configured_folder = configured_picker
         ? obs_property_path_default_path(configured_picker) : nullptr;
     const auto expected = std::filesystem::absolute(std::filesystem::path(argv[2]).parent_path());
-    if (!(signal_receiver||value_router||touch_field||privacy_v2||text_ocr||spatial_flow) &&
+    if (!(signal_receiver||value_router||privacy_v2||text_ocr||spatial_flow) &&
         (!configured_folder || std::filesystem::path(configured_folder) != expected)) {
         std::cerr << "FAIL: picker did not remember the selected model folder\n";
         if (configured) obs_properties_destroy(configured);
@@ -659,14 +634,14 @@ int main(int argc, char **argv)
     }
     if(object_direct) {
         const auto* picker=configured ?
-            obs_properties_get(configured,"model_path"):nullptr;
+            obs_properties_get(configured,tracking_key("model_path").c_str()):nullptr;
         const auto* minimum=configured ?
-            obs_properties_get(configured,"object_min_score"):nullptr;
+            obs_properties_get(configured,tracking_key("object_min_score").c_str()):nullptr;
         const auto* overlay=configured ?
-            obs_properties_get(configured,"draw_overlay"):nullptr;
+            obs_properties_get(configured,tracking_key("draw_overlay").c_str()):nullptr;
         auto* current=obs_source_get_settings(filter);
-        const bool enabled=obs_data_get_bool(current,"draw_overlay");
-        const int confidence=obs_data_get_int(current,"object_min_score");
+        const bool enabled=obs_data_get_bool(current,tracking_key("draw_overlay").c_str());
+        const int confidence=obs_data_get_int(current,tracking_key("object_min_score").c_str());
         obs_data_release(current);
         if(!picker || !minimum || !overlay ||
            confidence!=35 ||
@@ -680,17 +655,17 @@ int main(int argc, char **argv)
     }
     if(holistic_direct) {
         const auto* toggle=configured ?
-            obs_properties_get(configured,"draw_overlay") : nullptr;
+            obs_properties_get(configured,tracking_key("draw_overlay").c_str()) : nullptr;
         const auto* mode=configured ?
-            obs_properties_get(configured,"holistic_overlay_mode") : nullptr;
+            obs_properties_get(configured,tracking_key("holistic_overlay_mode").c_str()) : nullptr;
         const auto* stability=configured ?
-            obs_properties_get(configured,"holistic_stability_mode") : nullptr;
+            obs_properties_get(configured,tracking_key("holistic_stability_mode").c_str()) : nullptr;
         const auto* minimum=configured ?
-            obs_properties_get(configured,"holistic_min_confidence") : nullptr;
+            obs_properties_get(configured,tracking_key("holistic_min_confidence").c_str()) : nullptr;
         const auto* fade=configured ?
-            obs_properties_get(configured,"holistic_fade_lost") : nullptr;
+            obs_properties_get(configured,tracking_key("holistic_fade_lost").c_str()) : nullptr;
         const auto* person_mask=configured ?
-            obs_properties_get(configured,"holistic_person_mask") : nullptr;
+            obs_properties_get(configured,tracking_key("holistic_person_mask").c_str()) : nullptr;
         if(!toggle || !mode || !stability || !minimum || !fade || !person_mask ||
            obs_property_get_type(const_cast<obs_property_t*>(toggle))!=OBS_PROPERTY_BOOL ||
            obs_property_get_type(const_cast<obs_property_t*>(mode))!=OBS_PROPERTY_LIST ||
@@ -706,17 +681,12 @@ int main(int argc, char **argv)
             return 1;
         }
         auto* current_settings=obs_source_get_settings(filter);
-        const bool active=obs_data_get_bool(current_settings,"draw_overlay");
-        const int overlay_mode=obs_data_get_int(current_settings,
-                                                 "holistic_overlay_mode");
-        const int stability_mode=obs_data_get_int(current_settings,
-                                                 "holistic_stability_mode");
-        const int minimum_confidence=obs_data_get_int(current_settings,
-                                                 "holistic_min_confidence");
-        const bool fade_lost=obs_data_get_bool(current_settings,
-                                                 "holistic_fade_lost");
-        const bool mask_enabled=obs_data_get_bool(current_settings,
-                                                 "holistic_person_mask");
+        const bool active=obs_data_get_bool(current_settings,tracking_key("draw_overlay").c_str());
+        const int overlay_mode=obs_data_get_int(current_settings,tracking_key("holistic_overlay_mode").c_str());
+        const int stability_mode=obs_data_get_int(current_settings,tracking_key("holistic_stability_mode").c_str());
+        const int minimum_confidence=obs_data_get_int(current_settings,tracking_key("holistic_min_confidence").c_str());
+        const bool fade_lost=obs_data_get_bool(current_settings,tracking_key("holistic_fade_lost").c_str());
+        const bool mask_enabled=obs_data_get_bool(current_settings,tracking_key("holistic_person_mask").c_str());
         obs_data_release(current_settings);
         if(active != (std::getenv("SIGHT_SMOKE_HOLISTIC_OVERLAY")!=nullptr) ||
            overlay_mode!=(std::getenv("SIGHT_SMOKE_HOLISTIC_OVERLAY_MODE")
@@ -762,20 +732,6 @@ int main(int argc, char **argv)
             }
         }
     }
-    if(touch_field) {
-        for(const char* key:{"signal_channel","signal_max_age_ms",
-                             "touch_radius","touch_strength","touch_waves",
-                             "touch_speed","touch_pinch_boost"}) {
-            if(!obs_properties_get(configured,key)) {
-                std::cerr<<"FAIL: Touch Field control missing "<<key<<"\n";
-                obs_properties_destroy(configured);
-                obs_source_release(filter);
-                obs_source_release(source);
-                obs_shutdown();
-                return 1;
-            }
-        }
-    }
     if(signal_receiver) {
         for(const char* key:{"signal_channel","signal_max_age_ms","overlay_resolution"}) {
             if(!obs_properties_get(configured,key)) {
@@ -813,12 +769,10 @@ int main(int argc, char **argv)
             }
         }
     }
-    if (std::strcmp(selected_filter, "sight_face_motion_filter") == 0 ||
-        std::strcmp(selected_filter, "sight_body_motion_filter") == 0 ||
-        std::strcmp(selected_filter, "sight_hand_motion_filter") == 0) {
+    if (tracking_direct&&!holistic_direct&&!object_direct) {
         for (const char *key : {"model_path", "mediapipe_runtime", "inference_edge",
                                 "inference_cadence", "temporal_blend"}) {
-            if (!obs_properties_get(configured, key)) {
+            if (!obs_properties_get(configured, tracking_key(key).c_str())) {
                 std::cerr << "FAIL: tracking control missing " << key << "\n";
                 obs_properties_destroy(configured);
                 obs_source_release(filter);
@@ -1854,7 +1808,7 @@ int main(int argc, char **argv)
         }
         obs_source_filter_add(source,numeric);
     }
-    if((touch_field&&!expect_passthrough) || signal_receiver ||
+    if(signal_receiver ||
        (value_router&&std::getenv("SIGHT_SMOKE_ROUTER_SIGNAL"))) {
         const char* kind=std::getenv("SIGHT_SMOKE_SIGNAL_PRODUCER");
         if(!kind && value_router)kind=std::getenv("SIGHT_SMOKE_ROUTER_SIGNAL");
@@ -1870,7 +1824,7 @@ int main(int argc, char **argv)
                             rtmw?"wholebody":hand?"hand":pose?"body":"face");
         if(rtmw) {
             const char* detector=std::getenv("SIGHT_SMOKE_RTMW_DETECTOR");
-            if(!found_rtmw||!detector)return 1;
+            if(!detector)return 1;
             obs_data_set_string(producer_settings,"rtmw_person_detector",detector);
         }
         if(holistic) {
@@ -1882,11 +1836,8 @@ int main(int argc, char **argv)
         obs_data_set_int(producer_settings,"inference_edge",512);
         if(std::getenv("SIGHT_SMOKE_STATIC_TRACKING"))
             obs_data_set_int(producer_settings,"inference_cadence",1);
-        producer=obs_source_create(
-            rtmw?"sight_rtmw_tracking_filter":holistic?"sight_holistic_motion_filter":
-                hand?"sight_hand_motion_filter":
-                pose?"sight_body_motion_filter":"sight_face_motion_filter",
-            "Invisible Sight tracking publisher",producer_settings,nullptr);
+        producer=create_tracker("Invisible Sight tracking publisher",producer_settings,
+            rtmw?"rtmw":holistic?"holistic":hand?"hand":pose?"body":"face");
         obs_data_release(producer_settings);
         if(!producer) {
             std::cerr<<"FAIL: could not create independent signal publisher\n";
@@ -1902,21 +1853,21 @@ int main(int argc, char **argv)
                                  "signal_channel_face","signal_channel_body",
                                  "signal_channel_hand","inference_edge",
                                  "inference_cadence"}) {
-                complete &= options && obs_properties_get(options,key)!=nullptr;
+                complete &= options && obs_properties_get(options,(std::string("holistic_")+key).c_str())!=nullptr;
             }
             // A Holistic producer exposes an optional local overlay, but
             // this independent signal producer deliberately keeps it off.
             const auto* toggle=options?
-                obs_properties_get(options,"draw_overlay"):nullptr;
+                obs_properties_get(options,"holistic_draw_overlay"):nullptr;
             const auto* selector=options?
-                obs_properties_get(options,"holistic_overlay_mode"):nullptr;
+                obs_properties_get(options,"holistic_holistic_overlay_mode"):nullptr;
             complete &= toggle && selector &&
                 obs_property_get_type(const_cast<obs_property_t*>(toggle))==OBS_PROPERTY_BOOL &&
                 obs_property_get_type(const_cast<obs_property_t*>(selector))==OBS_PROPERTY_LIST &&
                 obs_property_list_item_count(const_cast<obs_property_t*>(selector))==4;
             auto* producer_settings_now=obs_source_get_settings(producer);
             complete &= producer_settings_now &&
-                !obs_data_get_bool(producer_settings_now,"draw_overlay");
+                !obs_data_get_bool(producer_settings_now,"holistic_draw_overlay");
             if(producer_settings_now)obs_data_release(producer_settings_now);
             if(options)obs_properties_destroy(options);
             if(!complete) {
@@ -1939,28 +1890,24 @@ int main(int argc, char **argv)
     obs_source_filter_add(source, filter);
     if(holistic_direct && std::getenv("SIGHT_SMOKE_HOLISTIC_MASK_TOGGLE")) {
         auto* changed=obs_data_create();
-        obs_data_set_bool(changed,"holistic_person_mask",true);
+        obs_data_set_bool(changed,"holistic_holistic_person_mask",true);
         obs_source_update(filter,changed);
         obs_data_release(changed);
     }
     if(holistic_direct && std::getenv("SIGHT_SMOKE_HOLISTIC_LIVE_TOGGLE")) {
         // Toggle and change the modality without reloading MediaPipe.
         auto* changed=obs_data_create();
-        obs_data_set_bool(changed,"draw_overlay",true);
-        obs_data_set_int(changed,"holistic_overlay_mode",3);
+        obs_data_set_bool(changed,"holistic_draw_overlay",true);
+        obs_data_set_int(changed,"holistic_holistic_overlay_mode",3);
         obs_source_update(filter,changed);
         obs_data_release(changed);
     }
     if(value_router)
         obs_source_inc_showing(source);
     size_t diff = 0;
-    const bool tracking =
-        std::strcmp(selected_filter, "sight_face_motion_filter") == 0 ||
-        std::strcmp(selected_filter, "sight_body_motion_filter") == 0 ||
-        std::strcmp(selected_filter, "sight_hand_motion_filter") == 0 ||
-        holistic_direct || object_direct;
+    const bool tracking=tracking_direct;
     const size_t required_diff =
-        (tracking || signal_receiver || value_router || touch_field || privacy_v2) ?
+        (tracking || signal_receiver || value_router || privacy_v2) ?
         250 : baseline.size() / 12;
     for (int i = 0; i < 70; ++i) {
         if (!render_image(source, current)) {
@@ -1995,17 +1942,13 @@ int main(int argc, char **argv)
         auto* hs=obs_data_create();
         obs_data_set_string(hs,"model_path","");
         obs_data_set_string(hs,"signal_channel_hand","camera/hands");
-        auto* holistic=obs_source_create("sight_holistic_motion_filter","Discovery holistic",hs,nullptr);
+        auto* holistic=create_tracker("Discovery holistic",hs,"holistic");
         obs_data_release(hs);
         if(!holistic)return 1;
         obs_source_set_enabled(holistic,false);
         obs_source_filter_add(source,holistic);
-        auto* touch=obs_source_create("sight_touch_field_filter","Discovery touch",nullptr,nullptr);
-        if(!touch)return 1;
-        obs_source_filter_add(source,touch);
-        props=obs_source_properties(touch);
-        auto* channel=obs_properties_get(props,"signal_channel");
-        const bool hands=contains(channel,"camera/hands")&&!contains(channel,"face");
+        props=obs_source_properties(filter);
+        const bool hands=contains(obs_properties_get(props,"signal_channel"),"camera/hands");
         obs_properties_destroy(props);
         auto* inventory=obs_data_create();
         calldata_t call;calldata_init(&call);
@@ -2022,7 +1965,6 @@ int main(int argc, char **argv)
         }
         if(rows)obs_data_array_release(rows);
         calldata_free(&call);obs_data_release(inventory);
-        obs_source_filter_remove(source,touch);obs_source_release(touch);
         obs_source_filter_remove(source,holistic);obs_source_release(holistic);
         props=obs_source_properties(filter);
         const bool removed=!contains(obs_properties_get(props,"signal_channel"),"camera/hands");
@@ -2073,7 +2015,7 @@ int main(int argc, char **argv)
         auto* idle_settings=obs_data_create();
         obs_data_set_string(idle_settings,"model_path","");
         obs_data_set_string(idle_settings,"signal_channel_hand","camera/holistic-hand");
-        auto* idle_producer=obs_source_create("sight_holistic_motion_filter","Idle holistic",idle_settings,nullptr);
+        auto* idle_producer=create_tracker("Idle holistic",idle_settings,"holistic");
         obs_data_release(idle_settings);
         if(!idle_producer)return 1;
         obs_source_filter_add(source,idle_producer);
@@ -2100,7 +2042,7 @@ int main(int argc, char **argv)
         // Rename and disable the producer. Discovery should expose the configured
         // new channel before any frames are rendered, not the old live name.
         auto* changed=obs_data_create();
-        obs_data_set_string(changed,"signal_channel","camera/renamed");
+        obs_data_set_string(changed,"face_signal_channel","camera/renamed");
         obs_source_update(producer,changed);obs_data_release(changed);
         obs_source_set_enabled(producer,false);
         props=obs_source_properties(filter);
@@ -2287,45 +2229,6 @@ int main(int argc, char **argv)
                  <<publications<<" fresh=1"<<std::endl;
         if(publications<5||publications>13) {
             std::cerr<<"FAIL: static tracking must publish a bounded heartbeat, not every render\n";
-            return 1;
-        }
-    }
-    // Sustain the full real hand model -> bus -> GPU shader path across
-    // time. A single first-success frame is insufficient for an interactive
-    // effect; detect stale dropout and frozen image output.
-    if(touch_field && std::getenv("SIGHT_SMOKE_TOUCH_CONTINUITY")) {
-        unsigned active_frames=0, evolving_frames=0;
-        size_t max_frame_diff=0;
-        std::vector<uint8_t> previous=current;
-        for(unsigned sample=0;sample<56;++sample) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(75));
-            if(!render_image(source,current)) {
-                std::cerr<<"FAIL: Touch Field continuous frame capture failed\n";
-                break;
-            }
-            size_t active=0, movement=0;
-            for(size_t j=0;j<current.size();++j) {
-                active+=baseline[j]!=current[j];
-                movement+=previous[j]!=current[j];
-            }
-            if(active>required_diff)++active_frames;
-            if(movement>required_diff)++evolving_frames;
-            max_frame_diff=std::max(max_frame_diff,movement);
-            previous=current;
-        }
-        std::cout<<"touch_continuity_active_frames="<<active_frames
-                 <<" touch_continuity_evolving_frames="<<evolving_frames
-                 <<" touch_continuity_max_motion="<<max_frame_diff<<"\n";
-        if(active_frames<12 || evolving_frames<12) {
-            std::cerr<<"FAIL: live hand ripples did not continue over time\n";
-            obs_source_filter_remove(source,filter);
-            obs_source_release(filter);
-            if(producer) {
-                obs_source_filter_remove(source,producer);
-                obs_source_release(producer);
-            }
-            obs_source_release(source);
-            obs_shutdown();
             return 1;
         }
     }
@@ -3216,14 +3119,6 @@ int main(int argc, char **argv)
     }
     if(value_router)
         obs_source_dec_showing(source);
-    if(touch_field&&expect_passthrough&&diff!=0) {
-        std::cerr<<"FAIL: Touch Field modified pixels without any hand signal\n";
-        obs_source_filter_remove(source,filter);
-        obs_source_release(filter);
-        obs_source_release(source);
-        obs_shutdown();
-        return 1;
-    }
     const double final_gain=routed_gain;
     if(value_router)
         std::cout<<"router_target_gain="<<final_gain
@@ -3310,7 +3205,7 @@ int main(int argc, char **argv)
     if(expect_passthrough)
         std::cout << (privacy_v2?
             "PASS: Privacy V2 real zero-face passthrough\n":
-            "PASS: no-hand Touch Field genuine passthrough\n");
+            "PASS: genuine passthrough\n");
     else
         std::cout << "PASS: actual OBS filter changed rendered pixels\n";
     return 0;

@@ -35,16 +35,7 @@ extern struct obs_source_info neural_enhance_filter_info; // Portrait Sketch
 #ifdef SIGHT_ANIMEGAN_ONLY
 extern struct obs_source_info sight_u2net_filter_info; // U2Net subject cutout
 extern struct obs_source_info sight_depth_filter_info; // Depth Anything depth camera
-extern struct obs_source_info sight_face_motion_filter_info;
-extern struct obs_source_info sight_body_motion_filter_info;
-extern struct obs_source_info sight_hand_motion_filter_info;
-extern struct obs_source_info sight_holistic_motion_filter_info;
-extern struct obs_source_info sight_object_tracking_filter_info;
 extern struct obs_source_info sight_unified_tracking_filter_info;
-#ifdef SIGHT_HAVE_RTMW
-extern struct obs_source_info sight_rtmw_tracking_filter_info;
-#endif
-extern struct obs_source_info sight_touch_field_filter_info;
 extern struct obs_source_info sight_privacy_v2_filter_info;
 #ifdef SIGHT_HAVE_OCR
 extern struct obs_source_info sight_text_obfuscation_filter_info;
@@ -98,17 +89,8 @@ bool obs_module_load(void)
     obs_register_source(&neural_enhance_filter_info);
     obs_register_source(&sight_u2net_filter_info);
     obs_register_source(&sight_depth_filter_info);
-    obs_register_source(&sight_face_motion_filter_info);
-    obs_register_source(&sight_body_motion_filter_info);
-    obs_register_source(&sight_hand_motion_filter_info);
-    obs_register_source(&sight_holistic_motion_filter_info);
-    obs_register_source(&sight_object_tracking_filter_info);
     obs_register_source(&sight_unified_tracking_filter_info);
     blog(LOG_INFO,"[Sight] SIGHT_UNIFIED_TRACKING_20261118_U653");
-#ifdef SIGHT_HAVE_RTMW
-    obs_register_source(&sight_rtmw_tracking_filter_info);
-#endif
-    obs_register_source(&sight_touch_field_filter_info);
     obs_register_source(&sight_privacy_v2_filter_info);
 #ifdef SIGHT_HAVE_OCR
     obs_register_source(&sight_text_obfuscation_filter_info);

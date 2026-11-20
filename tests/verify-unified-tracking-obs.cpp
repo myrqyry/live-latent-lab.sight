@@ -68,6 +68,14 @@ int main(int argc,char** argv){
     if(!name||std::string(name)!="LLL.sight Tracking"){
         puts("SIGHT_UNIFIED_REGISTRY=0");obs_shutdown();return 1;
     }
+    for(const auto* id:{"sight_face_motion_filter","sight_body_motion_filter",
+        "sight_hand_motion_filter","sight_holistic_motion_filter",
+        "sight_object_tracking_filter","sight_rtmw_tracking_filter","sight_touch_field_filter"}){
+        if(obs_source_get_display_name(id)){
+            printf("FAIL: redundant tracker registered: %s\n",id);
+            obs_shutdown();return 1;
+        }
+    }
     puts("SIGHT_UNIFIED_REGISTRY=1");
     obs_module_t* image=nullptr;
     if(obs_open_module(&image,argv[13],"/usr/local/share/obs/obs-plugins/image-source")!=MODULE_SUCCESS||!obs_init_module(image))return 5;
