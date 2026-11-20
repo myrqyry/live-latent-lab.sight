@@ -36,6 +36,26 @@ Tests with actual inference require explicit model/runtime/fixture paths;
 a reduced model-free test matrix does not qualify all tracking modes.
 Do not install into an active OBS process. No user models are shipped.
 
+## Optional GPU tracking
+
+RTMW whole-body tracking and the YOLOX GPU detector were verified in a
+separate Linux build using the existing matched LiteRT 2.3 native runtime
+and SDK. Supply those files explicitly; do not redistribute them until
+their terms have been reviewed.
+
+```sh
+cmake -S . -B build-public \
+  -DSIGHT_ENABLE_RTMW=ON \
+  -DSIGHT_LITERT_SDK_DIR=/path/to/litert_cc_sdk \
+  -DSIGHT_LITERT_RUNTIME_DIR=/path/to/ai_edge_litert \
+  -DSIGHT_LITERT_LICENSE=/path/to/LICENSE
+cmake --build build-public --parallel 4
+```
+
+Select the corresponding compatible model files in OBS. Real GPU acceptance
+requires the RTMW and YOLOX model files plus the MediaPipe tracking fixtures.
+See RELEASE_STATUS.md for the exact verification boundary.
+
 ## Release gate
 
 Public distribution is not cleared. The original README declared
