@@ -1,6 +1,6 @@
 # Touch Field — hand-controlled GPU image refraction
 
-**Sight: Touch Field (Hand Ripples)** reads the existing `Hand & Gesture
+**LLL.sight Touch Field (Hand Ripples)** reads the existing `Hand & Gesture
 Motion` channel. It does not load another MediaPipe model or run its own
 inference. Its GPU shader refracts the *full native-resolution source image*
 around each detected **index fingertip (landmark 8)**. Up to two hands are
@@ -14,9 +14,9 @@ because OBS renders the same tracking snapshot again.
 ## OBS setup
 
 On the **same video source**, add:
-1. `Sight: Hand & Gesture Motion (MediaPipe Tasks)`; set tracking channel to
+1. `LLL.sight Hand & Gesture Motion (MediaPipe Tasks)`; set tracking channel to
    `hand` and optionally disable its visible landmark overlay
-2. `Sight: Touch Field (Hand Ripples)`; receive channel `hand`
+2. `LLL.sight Touch Field (Hand Ripples)`; receive channel `hand`
 
 Moving an index fingertip moves a circular ripple field and leaves short
 expanding ripple fronts behind it. Slow movements accumulate rather than

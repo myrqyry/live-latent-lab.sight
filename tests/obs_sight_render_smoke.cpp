@@ -298,6 +298,11 @@ int main(int argc, char **argv)
         selected_filter = "neural_enhance_filter";
     while (obs_enum_filter_types(count++, &name)) {
         std::cout << "registered_filter=" << name << "\n";
+        const auto* label = obs_source_get_display_name(name);
+        if (!label || std::strncmp(label, "LLL.sight ", 10) != 0) {
+            std::cerr << "FAIL: filter display namespace: " << name << "\n";
+            obs_shutdown();return 1;
+        }
         if (std::strcmp(name, "neural_enhance_filter") == 0)
             found_sketch = true;
         else if (std::strcmp(name, "sight_u2net_filter") == 0)
@@ -335,20 +340,20 @@ int main(int argc, char **argv)
     }
     const char *display_name = obs_source_get_display_name("neural_enhance_filter");
     if (!display_name || std::string(display_name) !=
-            "Sight: Portrait Sketch (ControlNet Prep)") {
+            "LLL.sight Portrait Sketch (ControlNet Prep)") {
         std::cerr << "FAIL: registered source is mislabelled as anime color style\n";
         obs_shutdown();
         return 1;
     }
     const char *cutout_name = obs_source_get_display_name("sight_u2net_filter");
-    if (!cutout_name || std::string(cutout_name) != "Sight: Subject Cutout (U2Net)") {
+    if (!cutout_name || std::string(cutout_name) != "LLL.sight Subject Cutout (U2Net)") {
         std::cerr << "FAIL: U2Net filter missing or misnamed\n";
         obs_shutdown();
         return 1;
     }
     const char *depth_name = obs_source_get_display_name("sight_depth_filter");
     if (!depth_name || std::string(depth_name) !=
-            "Sight: Depth Camera (Depth Anything)") {
+            "LLL.sight Depth Camera (Depth Anything)") {
         std::cerr << "FAIL: Depth Camera missing or misnamed\n";
         obs_shutdown();
         return 1;
@@ -356,46 +361,46 @@ int main(int argc, char **argv)
     const char *face_name = obs_source_get_display_name("sight_face_motion_filter");
     const char *body_name = obs_source_get_display_name("sight_body_motion_filter");
     const char *hand_name = obs_source_get_display_name("sight_hand_motion_filter");
-    if (!face_name || std::strcmp(face_name, "Sight: Face Motion (MediaPipe Tasks)") ||
-        !body_name || std::strcmp(body_name, "Sight: Body Motion (MediaPipe Tasks)") ||
-        !hand_name || std::strcmp(hand_name,"Sight: Hand & Gesture Motion (MediaPipe Tasks)")) {
+    if (!face_name || std::strcmp(face_name, "LLL.sight Face Motion (MediaPipe Tasks)") ||
+        !body_name || std::strcmp(body_name, "LLL.sight Body Motion (MediaPipe Tasks)") ||
+        !hand_name || std::strcmp(hand_name,"LLL.sight Hand & Gesture Motion (MediaPipe Tasks)")) {
         std::cerr << "FAIL: MediaPipe Tasks filters missing or misnamed\n";
         obs_shutdown();
         return 1;
     }
     const char* holistic_name=obs_source_get_display_name("sight_holistic_motion_filter");
     if(!holistic_name || std::strcmp(holistic_name,
-        "Sight: Holistic Tracking (MediaPipe 1.2.3)")) {
+        "LLL.sight Holistic Tracking (MediaPipe 1.2.3)")) {
         std::cerr<<"FAIL: Holistic producer missing or misnamed\n";
         obs_shutdown();return 1;
     }
     const char* object_name=obs_source_get_display_name("sight_object_tracking_filter");
     if(!object_name || std::strcmp(object_name,
-        "Sight: Object Tracking (MediaPipe 1.2.3)")) {
+        "LLL.sight Object Tracking (MediaPipe 1.2.3)")) {
         std::cerr<<"FAIL: Object Tracking filter missing or misnamed\n";
         obs_shutdown();return 1;
     }
     const char* touch_name=obs_source_get_display_name("sight_touch_field_filter");
-    if(!touch_name||std::strcmp(touch_name,"Sight: Touch Field (Hand Ripples)")) {
+    if(!touch_name||std::strcmp(touch_name,"LLL.sight Touch Field (Hand Ripples)")) {
         std::cerr<<"FAIL: Touch Field filter is not registered correctly\n";
         obs_shutdown();
         return 1;
     }
     const char* receiver_name=obs_source_get_display_name("sight_tracking_receiver_filter");
-    if (!receiver_name || std::strcmp(receiver_name,"Sight: Tracking Signal Receiver")) {
+    if (!receiver_name || std::strcmp(receiver_name,"LLL.sight Tracking Signal Receiver")) {
         std::cerr << "FAIL: tracking signal receiver missing or misnamed\n";
         obs_shutdown();
         return 1;
     }
     const char* router_name=obs_source_get_display_name("sight_value_router_filter");
-    if(!router_name || std::strcmp(router_name,"Sight: Value Router (Signals + Waves)")) {
+    if(!router_name || std::strcmp(router_name,"LLL.sight Value Router (Signals + Waves)")) {
         std::cerr << "FAIL: Value Router is not registered correctly\n";
         obs_shutdown();
         return 1;
     }
     const auto *privacy_name=obs_source_get_display_name("sight_privacy_v2_filter");
     if(!privacy_name||std::strcmp(privacy_name,
-        "Sight: Privacy V2 — Conceal All Faces (Experimental)")) {
+        "LLL.sight Privacy V2 — Conceal All Faces (Experimental)")) {
         std::cerr<<"FAIL: Privacy V2 filter not registered with correct name\n";
         obs_shutdown();return 1;
     }

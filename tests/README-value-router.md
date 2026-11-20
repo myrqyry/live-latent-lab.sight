@@ -2,7 +2,7 @@
 
 ## What actually works
 
-A separate **Sight: Value Router (Signals + Waves)** OBS video filter does
+A separate **LLL.sight Value Router (Signals + Waves)** OBS video filter does
 not modify picture pixels; it reads/generates one scalar, remaps it, and writes
 a selected **numeric property of another OBS filter**, via the public
 `obs_source_get_settings`, `obs_data_set_double/int`, and

@@ -39,7 +39,7 @@ struct segment_filter_data {
 
 static const char *get_name(void *unused) {
     UNUSED_PARAMETER(unused);
-    return "Interactive Segment Filter (MobileSAM)";
+    return "LLL.sight Interactive Segment Filter (MobileSAM)";
 }
 
 static void video_render(void *data, gs_effect_t *effect) {

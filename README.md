@@ -63,3 +63,5 @@ GPL-2.0, but a top-level original-code license has not yet been confirmed.
 Runtime notices, model terms, clean-machine acceptance and package
 compatibility must be reviewed before publication. Windows and macOS
 are not certified.
+
+In OBS, sources and filters use the `LLL.sight` display-name prefix. Existing internal OBS source IDs are unchanged.

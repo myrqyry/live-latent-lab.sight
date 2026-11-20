@@ -1146,7 +1146,7 @@ void add_rtmw_properties(obs_properties_t* p,const std::string& prefix) {
     add_native_properties(p,Mode::Rtmw,prefix);
 }
 obs_properties_t* rtmw_properties(void*) {auto* p=obs_properties_create();add_rtmw_properties(p,"");return p;}
-const char* name_rtmw(void*){return "Sight: WholeBody Tracking (RTMW GPU)";}
+const char* name_rtmw(void*){return "LLL.sight WholeBody Tracking (RTMW GPU)";}
 #endif
 void add_properties(obs_properties_t* p,TrackingFilter* f,Mode mode,const std::string& prefix) {
     const bool holistic=mode==Mode::Holistic,objects=mode==Mode::Object;
@@ -1369,12 +1369,12 @@ obs_properties_t* unified_properties(void* data){
     obs_properties_add_text(p,"unified_note","One model pipeline at a time. Switching releases the previous model and its channels. Add another Tracking filter to run trackers simultaneously.",OBS_TEXT_INFO);
     return p;
 }
-const char* name_unified(void*){return "Sight: Tracking";}
-const char* name_face(void*) {return "Sight: Face Motion (MediaPipe Tasks)";}
-const char* name_body(void*) {return "Sight: Body Motion (MediaPipe Tasks)";}
-const char* name_hand(void*) {return "Sight: Hand & Gesture Motion (MediaPipe Tasks)";}
-const char* name_holistic(void*) {return "Sight: Holistic Tracking (MediaPipe 1.2.3)";}
-const char* name_objects(void*) {return "Sight: Object Tracking (MediaPipe 1.2.3)";}
+const char* name_unified(void*){return "LLL.sight Tracking";}
+const char* name_face(void*) {return "LLL.sight Face Motion (MediaPipe Tasks)";}
+const char* name_body(void*) {return "LLL.sight Body Motion (MediaPipe Tasks)";}
+const char* name_hand(void*) {return "LLL.sight Hand & Gesture Motion (MediaPipe Tasks)";}
+const char* name_holistic(void*) {return "LLL.sight Holistic Tracking (MediaPipe 1.2.3)";}
+const char* name_objects(void*) {return "LLL.sight Object Tracking (MediaPipe 1.2.3)";}
 void render(void *data,gs_effect_t*) {
     auto *f=static_cast<TrackingFilter*>(data);
     auto *target=obs_filter_get_target(f->context);

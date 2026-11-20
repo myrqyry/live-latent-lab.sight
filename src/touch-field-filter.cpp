@@ -53,7 +53,7 @@ struct Filter {
     std::string live_channel;
 };
 
-const char* get_name(void*) {return "Sight: Touch Field (Hand Ripples)";}
+const char* get_name(void*) {return "LLL.sight Touch Field (Hand Ripples)";}
 void defaults(obs_data_t* data) {
     obs_data_set_default_string(data,Channel,"hand");
     obs_data_set_default_int(data,Age,750);

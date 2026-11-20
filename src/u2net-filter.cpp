@@ -513,7 +513,7 @@ obs_properties_t *properties(void *data)
 
 const char *name(void *)
 {
-    return "Sight: Subject Cutout (U2Net)";
+    return "LLL.sight Subject Cutout (U2Net)";
 }
 
 void render(void *data, gs_effect_t *)

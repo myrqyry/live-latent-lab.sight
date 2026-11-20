@@ -34,7 +34,7 @@ struct Receiver {
     bool announced_first = false;
 };
 
-const char* get_name(void*) { return "Sight: Tracking Signal Receiver"; }
+const char* get_name(void*) { return "LLL.sight Tracking Signal Receiver"; }
 void get_defaults(obs_data_t* settings) {
     obs_data_set_default_string(settings, Channel, "face");
     obs_data_set_default_int(settings, Timeout, 750);

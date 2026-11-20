@@ -2445,7 +2445,7 @@ static obs_properties_t *get_properties(void *data) {
     return props;
 }
 
-static const char *get_name(void *unused) { return "Latent Style Filter"; }
+static const char *get_name(void *unused) { return "LLL.sight Latent Style Filter"; }
 
 static enum gs_color_space get_video_color_space(void *data, size_t count,
                                               const enum gs_color_space *preferred_spaces)

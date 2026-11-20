@@ -1,6 +1,6 @@
 # Hand & Gesture Motion — verified Linux/OBS path
 
-**Sight: Hand & Gesture Motion (MediaPipe Tasks)** is a standalone OBS filter
+**LLL.sight Hand & Gesture Motion (MediaPipe Tasks)** is a standalone OBS filter
 backed by the **Gesture Recognizer**, which returns hand landmarks *and*
 built-in classifications from one model invocation.
 

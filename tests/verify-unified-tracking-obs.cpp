@@ -65,7 +65,7 @@ int main(int argc,char** argv){
     obs_module_t* m=nullptr;
     if(obs_open_module(&m,argv[1],argv[2])!=MODULE_SUCCESS||!obs_init_module(m))return 4;
     const auto* name=obs_source_get_display_name("sight_unified_tracking_filter");
-    if(!name||std::string(name)!="Sight: Tracking"){
+    if(!name||std::string(name)!="LLL.sight Tracking"){
         puts("SIGHT_UNIFIED_REGISTRY=0");obs_shutdown();return 1;
     }
     puts("SIGHT_UNIFIED_REGISTRY=1");

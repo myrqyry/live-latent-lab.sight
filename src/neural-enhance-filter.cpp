@@ -326,7 +326,7 @@ static void worker_loop(neural_enhance_data *filter) {
 
 static const char *enhance_get_name(void *unused) {
     UNUSED_PARAMETER(unused);
-    return "Latent Neural Enhance";
+    return "LLL.sight Neural Enhance";
 }
 
 static void enhance_destroy(void *data) {

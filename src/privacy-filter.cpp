@@ -71,7 +71,7 @@ struct privacy_filter_data {
 
 static const char *get_name(void *unused) {
     UNUSED_PARAMETER(unused);
-    return "Privacy Filter (MediaPipe)";
+    return "LLL.sight Privacy Filter (MediaPipe)";
 }
 
 static void apply_privacy_blur(uint8_t* rgb, int w, int h, const uint8_t* mask, int mw, int mh, float strength) {

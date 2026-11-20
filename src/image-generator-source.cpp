@@ -292,7 +292,7 @@ static void worker_func(image_gen_data *data) {
 // OBS CALLBACKS
 // -------------------------------------------------------------------------------------------------
 
-static const char *get_name(void *unused) { return "Sight Generator Source"; }
+static const char *get_name(void *unused) { return "LLL.sight Generator Source"; }
 
 static void *create(obs_data_t *settings, obs_source_t *context) {
     image_gen_data *data = new image_gen_data();

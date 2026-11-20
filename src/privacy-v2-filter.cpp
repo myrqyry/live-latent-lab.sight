@@ -469,7 +469,7 @@ void render(void* data,gs_effect_t*) {
     // show the ordinary camera video. Never synthesize a black frame.
     obs_source_skip_video_filter(f->context);
 }
-const char* name(void*) {return "Sight: Privacy V2 — Conceal All Faces (Experimental)";}
+const char* name(void*) {return "LLL.sight Privacy V2 — Conceal All Faces (Experimental)";}
 } // namespace
 
 struct obs_source_info sight_privacy_v2_filter_info={

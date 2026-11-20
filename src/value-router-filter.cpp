@@ -731,7 +731,7 @@ obs_properties_t* properties(void* data) {
     obs_properties_add_float_slider(p,LIMIT,"Maximum updates/second",1,60,1);
     return p;
 }
-const char* get_name(void*) {return "Sight: Value Router (Signals + Waves)";}
+const char* get_name(void*) {return "LLL.sight Value Router (Signals + Waves)";}
 }
 
 struct obs_source_info sight_value_router_filter_info = {

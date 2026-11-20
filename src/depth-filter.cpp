@@ -531,7 +531,7 @@ obs_properties_t *properties(void *data)
 
 const char *name(void *)
 {
-    return "Sight: Depth Camera (Depth Anything)";
+    return "LLL.sight Depth Camera (Depth Anything)";
 }
 
 void render(void *data, gs_effect_t *)
