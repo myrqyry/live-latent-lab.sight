@@ -5,15 +5,38 @@ interactions. This is a local public-release candidate, not a published release.
 
 ## Linux x86_64 candidate
 
-The validated build includes subject cutout, depth, portrait sketch,
-a single Tracking filter (face, body, hands, holistic and objects), a tracking
-signal receiver, value routing, privacy experiments,
-and native VRM avatars. Spatial motion and text obfuscation depend on
-optional system libraries. The optional GPU whole-body path needs a
-separate LiteRT configuration. Native Live2D needs the private SDK and
-is not part of this candidate. Legacy generative effects remain gated. Add multiple Tracking instances when
-multiple models are needed simultaneously. Hand Ripples is now a HyperShaderFX
-shader consuming the existing Sight hand channel, not a separate Sight filter.
+All entries use the `LLL.sight` prefix in OBS.
+
+| Filter or source | Function |
+| --- | --- |
+| Tracking | Face, body, hands and gestures, holistic, objects, and optional GPU WholeBody (RTMW) |
+| Portrait Sketch (ControlNet Prep) | Model-based portrait line art |
+| Subject Cutout (U2Net) | Foreground separation and shared subject matte |
+| Depth Camera (Depth Anything) | Relative inverse depth and shared depth map |
+| Spatial Motion (DIS) | Optional optical flow and motion signals |
+| Text Obfuscation (OCR) | Optional local text-region detection and treatment |
+| Privacy V2 — Conceal All Faces (Experimental) | Experimental face concealment |
+| Tracking Signal Receiver | Shared tracking snapshots without another model |
+| Value Router (Signals + Waves) | Drive OBS properties from signals and waves |
+| VRM Avatar (Native) | Native avatar source |
+
+Choose a mode and model in **LLL.sight Tracking**. Each instance runs
+one selected model pipeline; add another instance for simultaneous
+tracking. The six former standalone trackers are no longer registered.
+
+### Use with HyperShaderFX
+
+Sight provides reusable tracking, matte, depth, motion, optical flow and
+OCR-region signals. HyperShaderFX consumes them for creative effects.
+For hand ripples, place Tracking in Hands & gestures mode upstream of
+HyperShaderFX on the same source, disable its overlay, enable shared Sight
+snapshots in HyperShaderFX, select the hand channel and choose
+**Sight: Hand Ripples**. The former standalone Touch Field filter is removed.
+
+The expanded Linux build registers the ten entries above. Spatial Motion
+and Text Obfuscation require optional system libraries; WholeBody needs
+LiteRT GPU support. Native Live2D requires the private SDK and remains
+excluded. Unvalidated generative effects remain gated.
 
 Model-backed effects require separately acquired compatible models and
 runtime libraries. See [model setup](docs/model-downloads.md) and
@@ -56,7 +79,9 @@ cmake --build build-public --parallel 4
 
 Select the corresponding compatible model files in OBS. Real GPU acceptance
 requires the RTMW and YOLOX model files plus the MediaPipe tracking fixtures.
-See RELEASE_STATUS.md for the exact verification boundary.
+The final expanded Linux configuration passed all 92 configured CTest
+checks, and release staging and the real HyperShaderFX integration passed.
+See [release status](RELEASE_STATUS.md) for exact evidence and limitations.
 
 ## Release gate
 
@@ -65,5 +90,3 @@ GPL-2.0, but a top-level original-code license has not yet been confirmed.
 Runtime notices, model terms, clean-machine acceptance and package
 compatibility must be reviewed before publication. Windows and macOS
 are not certified.
-
-In OBS, sources and filters use the `LLL.sight` display-name prefix. The public candidate exposes only the consolidated tracking source; obsolete development-only tracking and ripple registrations are removed.
