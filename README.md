@@ -59,7 +59,9 @@ it is not a guarantee of anonymity or complete redaction.
 
 Requirements: Linux, OBS 32 development headers and libobs, C++20,
 CMake, the matching ONNX Runtime 1.17.1, and xvfb-run for graphics tests.
-The tracked ONNX Runtime copy is retained pending distribution review.
+The [pinned ONNX Runtime dependency](docs/onnx-runtime.md) is required for
+vision inference. Its headers, shared library and legal notices are retained;
+redistribution review remains open.
 
 ```sh
 cmake -S . -B build-public -DCMAKE_BUILD_TYPE=Release
