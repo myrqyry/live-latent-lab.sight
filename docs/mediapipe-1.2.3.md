@@ -50,8 +50,9 @@ retain the tested legacy ABI alternative. Existing explicitly saved
 paths are not migrated. Package/test configuration verifies SHA-256;
 runtime discovery uses known ABI size and requires a regular file
 rather than following a symlink. The 1.2.3 runtime remains CPU-delegate
-in this implementation. See
-[tracking modernization](verification/2026-11-18-tracking-modernization.md).
+in this implementation. The detailed tracking-modernization note was
+not included in this curated release repository; the checks available
+here are summarized below.
 
 ## What has been verified
 

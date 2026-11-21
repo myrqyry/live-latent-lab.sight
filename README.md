@@ -1,7 +1,19 @@
 # Live Latent Lab: Sight
 
 Native OBS Studio tools for computer vision, visual effects and signal-driven
-interactions. This is a local public-release candidate, not a published release.
+interactions.
+
+**Source:** [live-latent-lab.sight](https://github.com/myrqyry/live-latent-lab.sight)
+(currently private). This is a curated, separately rooted release-candidate
+repository, not the historical development repository. There are currently
+**no GitHub releases or redistribution-cleared installers**.
+
+**Start here:** Review [models and downloads](docs/model-downloads.md), then
+[build and verify](#build-and-verify) locally on Linux with OBS 32. Optional
+GPU tracking needs the extra LiteRT runtime and models listed below.
+[Release readiness](docs/release-readiness.md) records what still blocks
+public source/binary distribution; [release status](RELEASE_STATUS.md) records
+the specific verification evidence.
 
 ## Linux x86_64 candidate
 

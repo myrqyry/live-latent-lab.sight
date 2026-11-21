@@ -48,8 +48,9 @@ moving-video landmark quality, update age/p95 latency, CPU/GPU utilization,
 render stalls and tracking-loss recovery on the actual target hardware.
 Do not trade away gestures/head transforms by silently replacing dedicated
 trackers with Holistic. Exact-frame dedup and modern default discovery
-are implemented and verified; see
-[tracking evidence](verification/2026-11-18-tracking-modernization.md).
+were tested locally; the detailed tracking modernization note is not
+included in this curated release repository. See
+[release status](../RELEASE_STATUS.md) for the scoped published evidence.
 
 ## Next useful vertical slice (proposed, not yet implemented)
 

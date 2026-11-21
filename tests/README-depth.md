@@ -83,6 +83,7 @@ The next step toward truly modular vision effects is to publish this validated
 depth texture as a shared signal instead of running the same depth model once
 per effect; no such shared graph is claimed to exist yet.
 
-A separate Depth Anything 3 / C++-ggml feasibility comparison, performed
-without changing this working filter, is recorded in
-[README-depth-da3-evaluation.md](README-depth-da3-evaluation.md).
+A separate Depth Anything 3 / C++-ggml feasibility comparison was
+performed without changing this working filter. Its research note was
+not included in this curated release repository; the tests documented
+above concern the shipped Depth Anything V2 path only.

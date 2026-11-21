@@ -84,11 +84,15 @@ See docs/object-tracking-mediapipe.md.
    to redistribute either runtime.
    Third-party notices are staged, but notices alone do not grant every
    redistribution right.
-3. **Private development history:** examine the tracked history, including
-   ACTIVE_WORK.md and technical notes containing local paths or personal
-   development details, before making repositories publicly accessible.
-   Do not rewrite history or delete continuity records automatically.
-   Removing a file from the tip does not erase it from past commits.
+3. **Publication-tree audit:** the curated
+   [Sight source repository](https://github.com/myrqyry/live-latent-lab.sight)
+   has its own initial commit and is separate from the private development
+   history. Before changing repository visibility, audit **every reachable
+   commit and ref in this release repository** for private files, credentials,
+   local paths, model weights and imported source whose redistribution terms
+   are unclear. Never merge or push development history wholesale into this
+   release repository. Removing a file from the tip does not erase it from
+   earlier reachable commits.
 4. **Clean installation:** build and test from a fresh clone on a second
    Linux system without relying on files already installed in OBS. Establish
    a reproducible CI job for the validated path before claiming broad

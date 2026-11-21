@@ -35,7 +35,7 @@ float16/1 URL is in [Hand provenance](../tests/README-hands.md).
 
 ## Holistic model (MediaPipe 1.2.3 only)
 
-The development build's **LLL.sight Tracking → Holistic**
+The candidate build's **LLL.sight Tracking → Holistic**
 OBS filter uses the [official Holistic float16 bundle](https://storage.googleapis.com/mediapipe-models/holistic_landmarker/holistic_landmarker/float16/latest/holistic_landmarker.task).
 Download it manually and select it in the model picker. Also select
 the verified native MediaPipe 1.2.3 runtime in its separate picker.
