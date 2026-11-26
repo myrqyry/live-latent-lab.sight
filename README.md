@@ -55,6 +55,18 @@ runtime libraries. See [model setup](docs/model-downloads.md) and
 [MediaPipe ABI notes](docs/mediapipe-1.2.3.md). Privacy V2 is experimental;
 it is not a guarantee of anonymity or complete redaction.
 
+## Plugin preferences
+
+With Qt6 Widgets available, open **Settings → Plugins → LLL.sight**
+to choose model and runtime browsing folders and access model download,
+setup and licensing resources. Sound and Sight share one Plugins category
+when both are installed, but maintain independent preferences. Apply or OK
+saves; Cancel discards unapplied edits. Existing selected models and
+automatic tracking discovery are unchanged. Build with
+`-DSIGHT_SETTINGS_PAGE=OFF` to omit this optional Qt integration.
+The OBS 32.2 dialog integration uses a private widget layout and is not an
+official frontend API; other versions are unqualified.
+
 ## Build and verify
 
 Requirements: Linux, OBS 32 development headers and libobs, C++20,

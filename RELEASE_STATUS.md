@@ -49,3 +49,21 @@ double-destroy/UI-dispatch warning, also observed with its older binary
 and Hand Highlights. Teardown warning is unresolved, not a clean-runtime
 claim. Physical webcam and normal interactive OBS UI were not tested.
 No installation or publication.
+
+## Shared plugin settings (2026-11-25)
+
+Added a native Settings → Plugins → LLL.sight tab to the validated build
+when Qt6 Widgets is available (SIGHT_SETTINGS_PAGE=OFF disables it).
+Uses the identical v1 widget convention from Sound e6add08; no dependency
+on Sound or Aftermarket. Separate plugin-owned preferences for model
+and runtime browsing roots, resource links from existing model guides,
+no change to auto-discovery, selected models, or active pipelines.
+Existing valid model-folder preference remains ahead of the global
+browse root for ONNX and MediaPipe property paths that already implement
+that behavior. RED absent bridge; GREEN 31/31 focused unit, release
+safety, shared settings and real libobs picker tests. Actual isolated OBS
+32.2.0 Fluffy Dark shows both independently loaded Sight and Sound tabs
+under a single Plugins category. Full inference suite not rerun. Current
+installed Sight includes native Live2D, absent from this public build;
+do not replace it with the reduced candidate. No push or local plugin
+replacement.

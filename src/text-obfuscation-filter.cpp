@@ -1,3 +1,4 @@
+#include "common/preferences.hpp"
 #include <obs-module.h>
 #include "core/analysis_capture.hpp"
 #include <graphics/graphics.h>
@@ -221,7 +222,7 @@ void destroy(void* data) {
 }
 obs_properties_t* properties(void*) {
     auto* p=obs_properties_create();
-    auto* path=obs_properties_add_path(p,"tessdata_path","Tesseract model folder",OBS_PATH_DIRECTORY,nullptr,default_directory().c_str());
+    auto* path=obs_properties_add_path(p,"tessdata_path","Tesseract model folder",OBS_PATH_DIRECTORY,nullptr,sight_preferences::browse(default_directory()).c_str());
     obs_property_set_long_description(path,"Folder containing language .traineddata files. OCR runs locally.");
     obs_properties_add_text(p,"ocr_language","OCR language (e.g. eng, eng+spa)",OBS_TEXT_DEFAULT);
     auto* layout=obs_properties_add_list(p,"ocr_layout","Text layout",OBS_COMBO_TYPE_LIST,OBS_COMBO_FORMAT_INT);

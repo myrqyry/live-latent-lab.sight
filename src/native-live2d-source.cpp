@@ -1,3 +1,4 @@
+#include "common/preferences.hpp"
 #include "live2d/native_model.hpp"
 #include "core/tracking_discovery.hpp"
 #include <obs-module.h>
@@ -157,7 +158,7 @@ uint32_t width(void* d){return static_cast<Source*>(d)->width;}
 uint32_t height(void* d){return static_cast<Source*>(d)->height;}
 obs_properties_t* properties(void* data){
     auto* p=obs_properties_create();
-    obs_properties_add_path(p,"model_path","Local Live2D model",OBS_PATH_FILE,"Live2D (*.model3.json)",nullptr);
+    obs_properties_add_path(p,"model_path","Local Live2D model",OBS_PATH_FILE,"Live2D (*.model3.json)",sight_preferences::directory().c_str());
     auto* source=static_cast<Source*>(data);
     sight::discovery::add_picker(p,source?source->context:nullptr,"face_channel",
          "Sight Face Motion Channel","face",sight::TrackingKind::Face);

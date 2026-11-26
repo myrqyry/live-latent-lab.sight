@@ -155,8 +155,17 @@ bool obs_module_load(void)
     return true;
 }
 
+#ifdef SIGHT_WITH_SETTINGS_PAGE
+void register_sight_settings();
+void unregister_sight_settings();
+void obs_module_post_load(void){register_sight_settings();}
+#endif
+
 void obs_module_unload(void)
 {
+#ifdef SIGHT_WITH_SETTINGS_PAGE
+    unregister_sight_settings();
+#endif
 #ifdef ENABLE_DOCK_PANEL
     obs_frontend_remove_event_callback(on_frontend_finished_loading, nullptr);
     if (styleDock) {

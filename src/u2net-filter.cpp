@@ -1,3 +1,4 @@
+#include "common/preferences.hpp"
 #include <obs-module.h>
 #include "core/analysis_capture.hpp"
 #include <graphics/graphics.h>
@@ -442,6 +443,7 @@ std::string model_browser_directory(U2NetFilter *filter)
         }
     }
 
+    if(auto configured=sight_preferences::directory();!configured.empty())return configured;
     char *module_path = obs_module_config_path("models");
     fs::path directory;
     if (module_path) {

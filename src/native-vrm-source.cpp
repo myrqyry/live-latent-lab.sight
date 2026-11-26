@@ -1,3 +1,4 @@
+#include "common/preferences.hpp"
 // Native OBS avatar source: glTF/VRM geometry, morphs and skinning are
 // drawn through libobs, not Chromium/OBS Browser Source.
 #include "core/tracking_signal_bus.hpp"
@@ -535,7 +536,7 @@ obs_properties_t *properties(void *data) {
   }
   auto *props = obs_properties_create();
   obs_properties_add_path(props, "model_path", "Local VRM Model", OBS_PATH_FILE,
-                          "VRM Avatar (*.vrm)", nullptr);
+                          "VRM Avatar (*.vrm)", sight_preferences::directory().c_str());
   sight::discovery::add_picker(props,s?s->context:nullptr,"face_channel",
       "Sight Face Motion Channel","face",sight::TrackingKind::Face);
   sight::discovery::add_picker(props,s?s->context:nullptr,"body_channel",

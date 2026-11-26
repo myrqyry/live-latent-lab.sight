@@ -1,3 +1,4 @@
+#include "common/preferences.hpp"
 #include <obs-module.h>
 #include <callback/proc.h>
 #include <graphics/graphics.h>
@@ -1094,7 +1095,7 @@ void defaults_rtmw(obs_data_t* settings) {
 }
 void add_rtmw_properties(obs_properties_t* p,const std::string& prefix) {
     auto key=[&](const char* k){return prefix+k;};
-    const auto dir=models_dir();
+    const auto dir=sight_preferences::browse(models_dir());
     auto* model=obs_properties_add_path(p,key(MODEL_PATH).c_str(),"RTMW-m WholeBody model",OBS_PATH_FILE,"TFLite model (*.tflite)",dir.c_str());
     obs_property_set_long_description(model,"133 COCO WholeBody 2D points. Strict LiteRT GPU acceleration; no CPU fallback.");
     auto* backend=obs_properties_add_list(p,key(RTMW_BACKEND).c_str(),"Person detector backend",OBS_COMBO_TYPE_LIST,OBS_COMBO_FORMAT_INT);
@@ -1104,7 +1105,7 @@ void add_rtmw_properties(obs_properties_t* p,const std::string& prefix) {
     obs_property_set_long_description(backend,"Auto selects GPU for yolox_nano.tflite and otherwise the MediaPipe detector. Explicit selection supports alternate filenames. No silent fallback.");
     auto* detector=obs_properties_add_path(p,key(RTMW_DETECTOR).c_str(),"Person detector model",OBS_PATH_FILE,"TFLite model (*.tflite)",dir.c_str());
     obs_property_set_long_description(detector,"Use the qualified YOLOX-Nano 416x416 raw-head LiteRT model or a compatible MediaPipe detector. Changing backend/model reloads the tracker.");
-    obs_properties_add_path(p,key(RUNTIME_PATH).c_str(),"MediaPipe 1.2.3 runtime (CPU detector only)",OBS_PATH_FILE,"Shared library (*.so)",std::filesystem::path(own_library_path()).parent_path().c_str());
+    obs_properties_add_path(p,key(RUNTIME_PATH).c_str(),"MediaPipe 1.2.3 runtime (CPU detector only)",OBS_PATH_FILE,"Shared library (*.so)",sight_preferences::browse(std::filesystem::path(own_library_path()).parent_path().string(),true).c_str());
     auto* edge=obs_properties_add_list(p,key(EDGE).c_str(),"Tracking input resolution",OBS_COMBO_TYPE_LIST,OBS_COMBO_FORMAT_INT);
     for(int n:{256,512,640})obs_property_list_add_int(edge,std::to_string(n).c_str(),n);
     auto* cadence=obs_properties_add_list(p,key(CADENCE).c_str(),"Capture no more often than every N OBS frames",OBS_COMBO_TYPE_LIST,OBS_COMBO_FORMAT_INT);
@@ -1120,7 +1121,7 @@ void add_properties(obs_properties_t* p,obs_data_t* settings,Mode mode,const std
     const auto kind=kind_for(mode);
     auto key=[&](const char* k){return prefix+k;};
     const auto dir=models_dir();
-    std::string default_dir=dir;
+    std::string default_dir=sight_preferences::browse(dir);
     if(settings) {
         std::error_code ec;
         const std::filesystem::path model_path=obs_data_get_string(settings,key(MODEL_PATH).c_str());
@@ -1142,7 +1143,7 @@ void add_properties(obs_properties_t* p,obs_data_t* settings,Mode mode,const std
     auto *runtime=obs_properties_add_path(p,key(RUNTIME_PATH).c_str(),
         (holistic||objects) ? "MediaPipe 1.2.3 runtime (auto-detected)"
                          : "MediaPipe Tasks C runtime",
-        OBS_PATH_FILE,"Shared library (*.so)",runtime_dir.c_str());
+        OBS_PATH_FILE,"Shared library (*.so)",sight_preferences::browse(runtime_dir,true).c_str());
     obs_property_set_long_description(runtime, (holistic||objects)
         ? "Sight automatically selects the verified 1.2.3 runtime installed "
           "beside this plugin. Browse only to override it or if no compatible "

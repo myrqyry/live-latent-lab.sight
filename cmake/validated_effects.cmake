@@ -78,6 +78,22 @@ add_library(live-latent-lab-sight MODULE
 )
 target_compile_definitions(live-latent-lab-sight PRIVATE
     SIGHT_ANIMEGAN_ONLY USE_ONNX_MEDIAPIPE)
+option(SIGHT_SETTINGS_PAGE "Include native Qt Plugins settings page" ON)
+if(SIGHT_SETTINGS_PAGE)
+    find_package(Qt6 COMPONENTS Widgets QUIET)
+    if(Qt6_FOUND)
+        target_sources(live-latent-lab-sight PRIVATE src/ui/sight_settings.cpp)
+        target_compile_definitions(live-latent-lab-sight PRIVATE SIGHT_WITH_SETTINGS_PAGE)
+        target_link_libraries(live-latent-lab-sight PRIVATE Qt6::Widgets)
+        add_executable(sight_plugin_settings_test tests/verify-plugin-settings.cpp)
+        target_link_libraries(sight_plugin_settings_test PRIVATE Qt6::Widgets)
+        add_test(NAME sight_plugin_settings_page COMMAND sight_plugin_settings_test)
+        set_tests_properties(sight_plugin_settings_page PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    else()
+        message(STATUS "Qt6 unavailable: native Sight settings page disabled")
+    endif()
+endif()
+
 # Optional local OCR: no mandatory dependency for existing builds.
 option(SIGHT_ENABLE_OCR "Enable native Tesseract OCR when development files are available" ON)
 if(SIGHT_ENABLE_OCR)
@@ -209,6 +225,15 @@ add_executable(sight_subject_motion_test tests/subject_motion_test.cpp)
 target_include_directories(sight_subject_motion_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 add_test(NAME sight_subject_motion_unit COMMAND sight_subject_motion_test)
 find_program(SIGHT_XVFB_RUN NAMES xvfb-run)
+if(TARGET sight_plugin_settings_test AND SIGHT_XVFB_RUN)
+    add_executable(sight_settings_picker_test tests/verify-settings-picker.cpp)
+    target_include_directories(sight_settings_picker_test PRIVATE "${SIGHT_OBS_INCLUDE}")
+    target_link_libraries(sight_settings_picker_test PRIVATE Qt6::Core "${SIGHT_OBS_LIBRARY}")
+    add_test(NAME sight_settings_native_picker COMMAND "${SIGHT_XVFB_RUN}" -a
+        $<TARGET_FILE:sight_settings_picker_test> $<TARGET_FILE:live-latent-lab-sight> "${CMAKE_CURRENT_SOURCE_DIR}/data")
+    set_tests_properties(sight_settings_native_picker PROPERTIES TIMEOUT 30)
+endif()
+
 if(SIGHT_XVFB_RUN)
     # Real OBS video-render regression for optional manual text zones.
     # Independent of any external OCR/model installation or real webcam.
