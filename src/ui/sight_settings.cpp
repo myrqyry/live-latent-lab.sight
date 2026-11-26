@@ -71,6 +71,9 @@ QWidget* makePage(QWidget*parent){
     link(layout,body,"OCR · Tesseract language models","https://github.com/tesseract-ocr/tessdata");
 #endif
     link(layout,body,"VRM avatar · interoperability guide",docs+"vrm-interoperability.md");
+    link(layout,body,"Live2D · optional native development build",docs+"live2d-native.md");
+    link(layout,body,"Cubism Native SDK · official download and terms","https://www.live2d.com/en/sdk/download/native/");
+    link(layout,body,"Live2D · publication requirements","https://www.live2d.com/en/sdk/license/");
     link(layout,body,"ONNX Runtime · pinned dependency",docs+"onnx-runtime.md");
     layout->addStretch();return page;
 }

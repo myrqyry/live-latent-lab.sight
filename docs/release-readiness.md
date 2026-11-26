@@ -29,6 +29,9 @@ separate from the experimental all-effects build.
 - **Experimental effects excluded:** Stable Diffusion, LiteRT, and
   unvalidated legacy effects. They exist in the repository but are behind
   SIGHT_ENABLE_UNVERIFIED_EFFECTS=ON.
+- **Optional Live2D source:** retained behind the existing local SDK build option.
+  See [native Live2D development and publication boundary](live2d-native.md).
+  The default candidate excludes Cubism; an enabled binary is not cleared.
 - **No model weights included:** users select compatible ONNX or
   MediaPipe Tasks models themselves. Missing/unsupported models must remain
   unavailable, not return fabricated inference results.

@@ -47,8 +47,7 @@ snapshots in HyperShaderFX, select the hand channel and choose
 
 The expanded Linux build registers the ten entries above. Spatial Motion
 and Text Obfuscation require optional system libraries; WholeBody needs
-LiteRT GPU support. Native Live2D requires the private SDK and remains
-excluded. Unvalidated generative effects remain gated.
+LiteRT GPU support. Native Live2D remains an [optional local development build](docs/live2d-native.md) using a separately acquired official SDK; it is excluded from the default preview binary, not removed from the source. Unvalidated generative effects remain gated.
 
 Model-backed effects require separately acquired compatible models and
 runtime libraries. See [model setup](docs/model-downloads.md) and

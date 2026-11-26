@@ -67,3 +67,27 @@ under a single Plugins category. Full inference suite not rerun. Current
 installed Sight includes native Live2D, absent from this public build;
 do not replace it with the reduced candidate. No push or local plugin
 replacement.
+
+## Live2D development and publication boundary (2026-11-25)
+
+Agreed to retain the existing native Live2D integration source and local
+functionality, with official user-acquired SDK outside Git and the default
+preview build excluding Cubism. Added docs/live2d-native.md, README and
+release-checklist clarification, official SDK acquisition/publication
+links in the Sight settings tab. Live2D's official terms require separate
+review for expandable avatar applications; an open-source adapter or
+external SDK does not establish release permission. Top-level Sight
+license and full source-origin review remain open.
+
+Checked reachable Git object paths and exact blob IDs of local Core library,
+Core header and Haru sample manifest; none found. This is a targeted check,
+not a complete provenance audit. Fresh separate Release build with the
+existing official Native SDK 5 R5 and Core 6.0.1, Qt settings, RTMW and
+optional system dependencies: 5/5 focused CTests passed (native OBS
+Live2D render with local Haru sample, animation, intake, shared settings,
+actual libobs picker defaults). Disposable install stage contained no
+Cubism-named files or .moc3/.model3.json/.motion3.json assets. Default
+build cache and installed Sight binary untouched: installed development
+version includes newer OCR functionality absent from this curated checkout.
+No private development history imported, no SDK/weights added, no push or
+publication. Full combined inference suite not rerun.
