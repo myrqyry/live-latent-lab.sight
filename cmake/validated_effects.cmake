@@ -506,8 +506,8 @@ add_test(NAME sight_holistic_person_mask_unit
 
 
 
-# Object detection has its own stable-ID layer. None of these tests
-# substitutes mock boxes for MediaPipe native inference acceptance.
+# Object detection has its own stable-ID layer. Its deterministic unit
+# tests are separate from actual MediaPipe inference acceptance.
 add_executable(sight_object_tracks_test tests/object_tracks_test.cpp)
 target_include_directories(sight_object_tracks_test PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -1402,7 +1402,7 @@ endif()
 
 # OBS model -> one Holistic graph -> actual same-source overlay pixels.
 # Off must pass the camera through; all/on and per-kind use the same
-# user-supplied model and native library, never test-only fake landmarks.
+# user-supplied model and native library with actual inferred landmarks.
 if(SIGHT_MEDIAPIPE_123_LIB AND SIGHT_HOLISTIC_MODEL AND
    SIGHT_HOLISTIC_TEST_IMAGE AND SIGHT_IMAGE_SOURCE_MODULE AND
    SIGHT_XVFB_RUN AND TARGET sight_obs_effect_render_smoke)
