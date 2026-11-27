@@ -49,8 +49,10 @@ def main():
     p.add_argument("target")
     p.add_argument("destination",type=Path)
     p.add_argument("--archive",type=Path,help="Use already downloaded pinned package")
+    p.add_argument("--variant",choices=("cpu","cuda-linux"),default="cpu",help="Pinned publisher SDK family")
     args=p.parse_args()
-    receipt=json.loads((ROOT/"docs/qualification/onnxruntime-native-sdk.json").read_text())
+    name="onnxruntime-cuda-sdk.json" if args.variant=="cuda-linux" else "onnxruntime-native-sdk.json"
+    receipt=json.loads((ROOT/"docs/qualification"/name).read_text())
     if args.target not in receipt["targets"]:
         p.error("Unsupported SDK target")
     with tempfile.TemporaryDirectory(prefix="sight-ort-download-") as tmp:

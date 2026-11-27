@@ -9,6 +9,11 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 SCRIPT=ROOT/"tools/acquire-native-ort.py"
 class Test(unittest.TestCase):
+    def test_cuda_variant_rejects_unsupported_native_host(self):
+        result=subprocess.run([sys.executable,str(SCRIPT),"windows-x64","unused", "--variant","cuda-linux"],capture_output=True,text=True)
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn("Unsupported SDK target",result.stderr)
+
     def test_exact_pinned_members_and_no_overwrite(self):
         # Fixture exercises the same extraction function with an independent
         # synthetic receipt. It is not a native library or inference test.

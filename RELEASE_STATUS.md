@@ -184,3 +184,24 @@ header/library roots before any install write. The red/green test and all
 five release-safety cases passed; the actual split CUDA install was rejected
 and the ordinary optional stage still passes. A matched portable GPU
 SDK/runtime distribution remains a separate qualification task.
+
+## Native and matched CUDA qualification follow-up
+
+Hosted Linux qualification at c820a2e passed both OBS 32.2.0 and 33.0.3
+(44/44 each), with 17-file package layout, exports and archive verification.
+Native baseline port now shares the maintained source list, uses verified
+native ONNX SDKs, and blocks Linux-only MediaPipe ABI loading on other hosts.
+Local Linux native baseline: four tests, including actual Unicode-path
+inference and VRM parsing, passed. Extended Linux model-free gate: 46/46;
+Windows/macOS runners must still establish their own qualification. Native
+optional OCR, dense flow, Qt settings, tracking SDKs, diffusion, Live2D and
+neural worker are not enabled in this initial native baseline.
+
+Publisher NuGet ONNX Runtime GPU Linux 1.30.0 acquired with matching headers,
+notices and CUDA provider; 21 output files verified, including loader/linker
+names for the same library. Actual staged CUDA-only MatMul passed with CPU
+fallback disabled and separately supplied CUDA 13 libraries. Stage content
+verification passed (19 files). No NVIDIA binaries or models bundled. The
+current host requires explicit CUDA runtime library directories. No claim of
+portable GPU binary release or Windows/macOS GPU qualification. Public CI
+binary uploads remain disabled.

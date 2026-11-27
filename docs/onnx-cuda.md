@@ -73,3 +73,41 @@ The separately acquired CUDA and cuDNN runtime dependencies must be visible
 on the target system; they are not bundled by Sight. Use a fresh build
 folder when changing SDKs, and verify actual providers and model-backed
 inference. This is not a portable GPU installer certification.
+
+## Matched publisher CUDA SDK (2026-11-26)
+
+For Linux x86_64, the official Microsoft.ML.OnnxRuntime.Gpu.Linux 1.30.0
+NuGet package contains matching native headers, library, CUDA provider and
+third-party notices. The acquisition tool verifies the complete publisher
+package SHA-256 and every selected output. TensorRT, .NET dependencies,
+NVIDIA runtimes and model weights are not extracted. The ELF SONAME is
+`libonnxruntime.so.1`; the SDK contains both the linker and loader names.
+
+```sh
+python3 tools/acquire-native-ort.py linux-x86_64 "$HOME/.local/share/sight-sdk/ort-cuda-1.30.0" --variant cuda-linux
+cmake -S . -B build-sight-cuda -G Ninja -DCMAKE_BUILD_TYPE=Release \
+  -DSIGHT_ORT_ROOT="$HOME/.local/share/sight-sdk/ort-cuda-1.30.0"
+cmake --build build-sight-cuda --parallel 4
+bash tools/verify-release-stage.sh build-sight-cuda
+# Supply actual matching NVIDIA CUDA 13 runtime library directories.
+SIGHT_CUDA_RUNTIME_PATH=/absolute/path/to/cuda13/lib bash tools/verify-cuda-package.sh build-sight-cuda
+```
+
+The staged qualification helper checks all provider loader dependencies and
+verifies that the test process uses the staged ONNX Runtime, then requires a
+real CUDA-only MatMul with CPU execution fallback disabled. It launches no
+OBS instance and downloads no model. The NVIDIA driver and matching CUDA
+13 runtime libraries must be installed separately from their publishers.
+Never mix CUDA 12 and CUDA 13 library directories or substitute a CPU
+runtime. Consult the [ONNX Runtime provider requirements](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html)
+and [NVIDIA CUDA installation guidance](https://docs.nvidia.com/cuda/cuda-installation-guide-linux/).
+
+The matched SDK compiled Sight and passed actual staged CUDA-only inference
+on the local RTX 2070 SUPER. The 19-file stage passed content and SONAME
+checks. Without the explicit runtime directories, the provider reports
+missing CUDA 13 libraries, as expected. This qualifies the local staged
+runtime with external dependencies, not independent machine portability,
+Windows CUDA, macOS acceleration, or an unrestricted public binary release.
+The matched SDK was not tested with a live OBS filter in this pass because
+OBS was already open; previous split-SDK CUDA Longpipe tests remain separate.
+See [publisher package receipt](qualification/onnxruntime-cuda-sdk.json).
