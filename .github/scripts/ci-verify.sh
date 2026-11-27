@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
-pin=238f06a01f1469a21fe6991df7f94ef149472be1
+pin="$(python3 "$root/tools/ci-engine-pin.py" "$root/.github/workflows/shared-ci.yml")"
+python3 -B "$root/tests/test_ci_contract.py"
 engine="$RUNNER_TEMP/obs-ci-engine"
 git init -q "$engine"
 git -C "$engine" fetch --depth=1 https://github.com/myrqyry/obs-plugin-ci.git "$pin"

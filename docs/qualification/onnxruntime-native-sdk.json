@@ -1,0 +1,218 @@
+{
+  "archive_sha256": "60493669633f99542a0a3e4dd17bfa9542cbfcd9852ef672f8c36ce6a9d2d935",
+  "package": "Microsoft.ML.OnnxRuntime",
+  "provenance": "Downloaded directly over HTTPS from NuGet, package metadata identifies Microsoft and release commit; signature present but not independently validated. Exact archive and selected member hashes pinned; not public redistribution approval.",
+  "targets": {
+    "linux-x86_64": {
+      "LICENSE": {
+        "member": "LICENSE",
+        "sha256": "c250d6278f0b47a6439fb7592b08b58a55eb9f535aa49a1db63211c3f982b674"
+      },
+      "ThirdPartyNotices.txt": {
+        "member": "ThirdPartyNotices.txt",
+        "sha256": "986101973ef6af459c36845f626791da4c9ae52bdad4a980989af2c6a5cb5a61"
+      },
+      "include/cpu_provider_factory.h": {
+        "member": "build/native/include/cpu_provider_factory.h",
+        "sha256": "e2f658eeace78d79a8df82f233dcdeea135db498a77766156054bfc0d1d06c21"
+      },
+      "include/onnxruntime_c_api.h": {
+        "member": "build/native/include/onnxruntime_c_api.h",
+        "sha256": "91c948993acb1d04ef548c3f191614eb5c235f8f56b5cb0eafe0a418c663d8f5"
+      },
+      "include/onnxruntime_cxx_api.h": {
+        "member": "build/native/include/onnxruntime_cxx_api.h",
+        "sha256": "2fffb1a3d9c57e801ac27356ca2289c902abac0f95cf135a551021835d66ebb1"
+      },
+      "include/onnxruntime_cxx_inline.h": {
+        "member": "build/native/include/onnxruntime_cxx_inline.h",
+        "sha256": "397f5492d746c8fa115b0142aa682ba3b6cdcc0f6f10c6c50986f8352cea37ea"
+      },
+      "include/onnxruntime_float16.h": {
+        "member": "build/native/include/onnxruntime_float16.h",
+        "sha256": "e9b9773e9db8a1795160e4b86332d20c73c076c04847a4ac5f77678d06f2b740"
+      },
+      "include/onnxruntime_lite_custom_op.h": {
+        "member": "build/native/include/onnxruntime_lite_custom_op.h",
+        "sha256": "50951cfbe51c580ed07d07c3019ef9d645fc07e9cea548b36b1ba1282ef420e2"
+      },
+      "include/onnxruntime_run_options_config_keys.h": {
+        "member": "build/native/include/onnxruntime_run_options_config_keys.h",
+        "sha256": "c32a0725408144461dac591b19f2190ed4f31e5688f773c4d66a318d761866f8"
+      },
+      "include/onnxruntime_session_options_config_keys.h": {
+        "member": "build/native/include/onnxruntime_session_options_config_keys.h",
+        "sha256": "73d87214da88ea34afe0e30ce769a35509cd0b6159a4af57f56f9baf24190491"
+      },
+      "include/provider_options.h": {
+        "member": "build/native/include/provider_options.h",
+        "sha256": "74f8accd5b30fbfe8abb24ca279e634657b446bf5b9be520badaaebcea63cade"
+      },
+      "lib/libonnxruntime.so": {
+        "member": "runtimes/linux-x64/native/libonnxruntime.so",
+        "sha256": "a34d8c226994dd4af2b2250442fc236ebba97aefc7ec451c35a86216588d2f69"
+      }
+    },
+    "macos-arm64": {
+      "LICENSE": {
+        "member": "LICENSE",
+        "sha256": "c250d6278f0b47a6439fb7592b08b58a55eb9f535aa49a1db63211c3f982b674"
+      },
+      "ThirdPartyNotices.txt": {
+        "member": "ThirdPartyNotices.txt",
+        "sha256": "986101973ef6af459c36845f626791da4c9ae52bdad4a980989af2c6a5cb5a61"
+      },
+      "include/cpu_provider_factory.h": {
+        "member": "build/native/include/cpu_provider_factory.h",
+        "sha256": "e2f658eeace78d79a8df82f233dcdeea135db498a77766156054bfc0d1d06c21"
+      },
+      "include/onnxruntime_c_api.h": {
+        "member": "build/native/include/onnxruntime_c_api.h",
+        "sha256": "91c948993acb1d04ef548c3f191614eb5c235f8f56b5cb0eafe0a418c663d8f5"
+      },
+      "include/onnxruntime_cxx_api.h": {
+        "member": "build/native/include/onnxruntime_cxx_api.h",
+        "sha256": "2fffb1a3d9c57e801ac27356ca2289c902abac0f95cf135a551021835d66ebb1"
+      },
+      "include/onnxruntime_cxx_inline.h": {
+        "member": "build/native/include/onnxruntime_cxx_inline.h",
+        "sha256": "397f5492d746c8fa115b0142aa682ba3b6cdcc0f6f10c6c50986f8352cea37ea"
+      },
+      "include/onnxruntime_float16.h": {
+        "member": "build/native/include/onnxruntime_float16.h",
+        "sha256": "e9b9773e9db8a1795160e4b86332d20c73c076c04847a4ac5f77678d06f2b740"
+      },
+      "include/onnxruntime_lite_custom_op.h": {
+        "member": "build/native/include/onnxruntime_lite_custom_op.h",
+        "sha256": "50951cfbe51c580ed07d07c3019ef9d645fc07e9cea548b36b1ba1282ef420e2"
+      },
+      "include/onnxruntime_run_options_config_keys.h": {
+        "member": "build/native/include/onnxruntime_run_options_config_keys.h",
+        "sha256": "c32a0725408144461dac591b19f2190ed4f31e5688f773c4d66a318d761866f8"
+      },
+      "include/onnxruntime_session_options_config_keys.h": {
+        "member": "build/native/include/onnxruntime_session_options_config_keys.h",
+        "sha256": "73d87214da88ea34afe0e30ce769a35509cd0b6159a4af57f56f9baf24190491"
+      },
+      "include/provider_options.h": {
+        "member": "build/native/include/provider_options.h",
+        "sha256": "74f8accd5b30fbfe8abb24ca279e634657b446bf5b9be520badaaebcea63cade"
+      },
+      "lib/libonnxruntime.dylib": {
+        "member": "runtimes/osx-arm64/native/libonnxruntime.dylib",
+        "sha256": "f2a78271c961b2de0f9e9e10d223db683cdff8f8affe3614028ccc3e38f86156"
+      }
+    },
+    "macos-x86_64": {
+      "LICENSE": {
+        "member": "LICENSE",
+        "sha256": "c250d6278f0b47a6439fb7592b08b58a55eb9f535aa49a1db63211c3f982b674"
+      },
+      "ThirdPartyNotices.txt": {
+        "member": "ThirdPartyNotices.txt",
+        "sha256": "986101973ef6af459c36845f626791da4c9ae52bdad4a980989af2c6a5cb5a61"
+      },
+      "include/cpu_provider_factory.h": {
+        "member": "build/native/include/cpu_provider_factory.h",
+        "sha256": "e2f658eeace78d79a8df82f233dcdeea135db498a77766156054bfc0d1d06c21"
+      },
+      "include/onnxruntime_c_api.h": {
+        "member": "build/native/include/onnxruntime_c_api.h",
+        "sha256": "91c948993acb1d04ef548c3f191614eb5c235f8f56b5cb0eafe0a418c663d8f5"
+      },
+      "include/onnxruntime_cxx_api.h": {
+        "member": "build/native/include/onnxruntime_cxx_api.h",
+        "sha256": "2fffb1a3d9c57e801ac27356ca2289c902abac0f95cf135a551021835d66ebb1"
+      },
+      "include/onnxruntime_cxx_inline.h": {
+        "member": "build/native/include/onnxruntime_cxx_inline.h",
+        "sha256": "397f5492d746c8fa115b0142aa682ba3b6cdcc0f6f10c6c50986f8352cea37ea"
+      },
+      "include/onnxruntime_float16.h": {
+        "member": "build/native/include/onnxruntime_float16.h",
+        "sha256": "e9b9773e9db8a1795160e4b86332d20c73c076c04847a4ac5f77678d06f2b740"
+      },
+      "include/onnxruntime_lite_custom_op.h": {
+        "member": "build/native/include/onnxruntime_lite_custom_op.h",
+        "sha256": "50951cfbe51c580ed07d07c3019ef9d645fc07e9cea548b36b1ba1282ef420e2"
+      },
+      "include/onnxruntime_run_options_config_keys.h": {
+        "member": "build/native/include/onnxruntime_run_options_config_keys.h",
+        "sha256": "c32a0725408144461dac591b19f2190ed4f31e5688f773c4d66a318d761866f8"
+      },
+      "include/onnxruntime_session_options_config_keys.h": {
+        "member": "build/native/include/onnxruntime_session_options_config_keys.h",
+        "sha256": "73d87214da88ea34afe0e30ce769a35509cd0b6159a4af57f56f9baf24190491"
+      },
+      "include/provider_options.h": {
+        "member": "build/native/include/provider_options.h",
+        "sha256": "74f8accd5b30fbfe8abb24ca279e634657b446bf5b9be520badaaebcea63cade"
+      },
+      "lib/libonnxruntime.dylib": {
+        "member": "runtimes/osx-x64/native/libonnxruntime.dylib",
+        "sha256": "ffe824918d42fbf7e05543691e0d9f78b118b48c28897955463e1e5fec163002"
+      }
+    },
+    "windows-x64": {
+      "LICENSE": {
+        "member": "LICENSE",
+        "sha256": "c250d6278f0b47a6439fb7592b08b58a55eb9f535aa49a1db63211c3f982b674"
+      },
+      "ThirdPartyNotices.txt": {
+        "member": "ThirdPartyNotices.txt",
+        "sha256": "986101973ef6af459c36845f626791da4c9ae52bdad4a980989af2c6a5cb5a61"
+      },
+      "include/cpu_provider_factory.h": {
+        "member": "build/native/include/cpu_provider_factory.h",
+        "sha256": "e2f658eeace78d79a8df82f233dcdeea135db498a77766156054bfc0d1d06c21"
+      },
+      "include/onnxruntime_c_api.h": {
+        "member": "build/native/include/onnxruntime_c_api.h",
+        "sha256": "91c948993acb1d04ef548c3f191614eb5c235f8f56b5cb0eafe0a418c663d8f5"
+      },
+      "include/onnxruntime_cxx_api.h": {
+        "member": "build/native/include/onnxruntime_cxx_api.h",
+        "sha256": "2fffb1a3d9c57e801ac27356ca2289c902abac0f95cf135a551021835d66ebb1"
+      },
+      "include/onnxruntime_cxx_inline.h": {
+        "member": "build/native/include/onnxruntime_cxx_inline.h",
+        "sha256": "397f5492d746c8fa115b0142aa682ba3b6cdcc0f6f10c6c50986f8352cea37ea"
+      },
+      "include/onnxruntime_float16.h": {
+        "member": "build/native/include/onnxruntime_float16.h",
+        "sha256": "e9b9773e9db8a1795160e4b86332d20c73c076c04847a4ac5f77678d06f2b740"
+      },
+      "include/onnxruntime_lite_custom_op.h": {
+        "member": "build/native/include/onnxruntime_lite_custom_op.h",
+        "sha256": "50951cfbe51c580ed07d07c3019ef9d645fc07e9cea548b36b1ba1282ef420e2"
+      },
+      "include/onnxruntime_run_options_config_keys.h": {
+        "member": "build/native/include/onnxruntime_run_options_config_keys.h",
+        "sha256": "c32a0725408144461dac591b19f2190ed4f31e5688f773c4d66a318d761866f8"
+      },
+      "include/onnxruntime_session_options_config_keys.h": {
+        "member": "build/native/include/onnxruntime_session_options_config_keys.h",
+        "sha256": "73d87214da88ea34afe0e30ce769a35509cd0b6159a4af57f56f9baf24190491"
+      },
+      "include/provider_options.h": {
+        "member": "build/native/include/provider_options.h",
+        "sha256": "74f8accd5b30fbfe8abb24ca279e634657b446bf5b9be520badaaebcea63cade"
+      },
+      "lib/onnxruntime.dll": {
+        "member": "runtimes/win-x64/native/onnxruntime.dll",
+        "sha256": "b9dba35ec85d49c0186332c19a01601ae598ede701b79dcc70de50d4dba36fa6"
+      },
+      "lib/onnxruntime.lib": {
+        "member": "runtimes/win-x64/native/onnxruntime.lib",
+        "sha256": "5634552d72480529063392ded0effc0a3c793b8c8165d0b166f48d491faa0596"
+      },
+      "lib/onnxruntime_providers_shared.dll": {
+        "member": "runtimes/win-x64/native/onnxruntime_providers_shared.dll",
+        "sha256": "ba645bf03bd60df622cf27d6111d1359506a90d0e3b5558f0a271f0b560cf97c"
+      }
+    }
+  },
+  "upstream_commit": "8f5c79cb63f09ef1302e85081093a3fe4da1bc7d",
+  "url": "https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime/1.17.1/microsoft.ml.onnxruntime.1.17.1.nupkg",
+  "version": "1.17.1"
+}
