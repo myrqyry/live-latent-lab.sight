@@ -8,8 +8,14 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Do not use libobs' pkg-config compile flags for C++: some Linux OBS
 # packages export -std=gnu17 and -Werror, which break this C++20 plugin.
-find_path(SIGHT_OBS_INCLUDE obs-module.h REQUIRED
-    PATHS "$ENV{SIGHT_OBS_SDK_ROOT}/include/obs" /usr/local/include/obs /usr/include/obs NO_DEFAULT_PATH)
+if(DEFINED ENV{SIGHT_OBS_SDK_ROOT} AND NOT "$ENV{SIGHT_OBS_SDK_ROOT}" STREQUAL "")
+    set(_sight_sdk_include "$ENV{SIGHT_OBS_SDK_ROOT}/include/obs")
+    set(_sight_sdk_lib "$ENV{SIGHT_OBS_SDK_ROOT}/lib" "$ENV{SIGHT_OBS_SDK_ROOT}/lib/x86_64-linux-gnu")
+else()
+    set(_sight_sdk_include /usr/local/include/obs /usr/include/obs)
+    set(_sight_sdk_lib /usr/local/lib /usr/lib/x86_64-linux-gnu)
+endif()
+find_path(SIGHT_OBS_INCLUDE obs-module.h REQUIRED PATHS ${_sight_sdk_include} NO_DEFAULT_PATH)
 file(READ "${SIGHT_OBS_INCLUDE}/obs-config.h" SIGHT_OBS_CONFIG_H)
 string(REGEX MATCH "LIBOBS_API_MAJOR_VER +([0-9]+)" _sight_obs_major "${SIGHT_OBS_CONFIG_H}")
 set(SIGHT_OBS_API_MAJOR "${CMAKE_MATCH_1}")
@@ -35,7 +41,7 @@ endif()
 message(STATUS "Sight validated build certified against libobs API "
         "${SIGHT_OBS_API_MAJOR}.${SIGHT_OBS_API_MINOR} (patch differences load-safe)")
 find_library(SIGHT_OBS_LIBRARY NAMES obs REQUIRED
-    PATHS "$ENV{SIGHT_OBS_SDK_ROOT}/lib" "$ENV{SIGHT_OBS_SDK_ROOT}/lib/x86_64-linux-gnu" /usr/local/lib /usr/lib/x86_64-linux-gnu NO_DEFAULT_PATH)
+    PATHS ${_sight_sdk_lib} NO_DEFAULT_PATH)
 
 set(SIGHT_ORT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/external/onnxruntime" CACHE PATH
     "ONNX Runtime installation with include/ and lib/")

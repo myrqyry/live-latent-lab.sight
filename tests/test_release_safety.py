@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Release-safety regression tests: no assumptions about user's OBS install."""
+import os
 import pathlib
 import re
 import shutil
@@ -10,6 +11,10 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 CMAKE = ROOT / "cmake" / "validated_effects.cmake"
 PRIVACY = ROOT / "tests" / "verify-privacy-v2.sh"
+# Nested configure tests must use the same SDK API series as their caller.
+SDK_ARGS = [f"-DSIGHT_EXPECTED_LIBOBS_{key}={os.environ[f'SIGHT_TEST_OBS_{key}']}"
+            for key in ("MAJOR", "MINOR") if f"SIGHT_TEST_OBS_{key}" in os.environ]
+
 
 
 class ReleaseSafetyTests(unittest.TestCase):
@@ -39,7 +44,7 @@ class ReleaseSafetyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="sight-system-prefix-") as tmp:
             build = pathlib.Path(tmp) / "build"
             configured = subprocess.run(
-                ["cmake", "-S", str(ROOT), "-B", str(build),
+                ["cmake", "-S", str(ROOT), "-B", str(build), *SDK_ARGS,
                  "-DCMAKE_INSTALL_PREFIX=/usr/local/sight"],
                 capture_output=True, text=True, timeout=90,
             )
@@ -66,7 +71,7 @@ class ReleaseSafetyTests(unittest.TestCase):
             alternate = root / "libonnxruntime.so.1.17.1"
             shutil.copyfile(ROOT / "external/onnxruntime/lib/libonnxruntime.so.1.17.1", alternate)
             configured = subprocess.run(
-                ["cmake", "-S", str(ROOT), "-B", str(build),
+                ["cmake", "-S", str(ROOT), "-B", str(build), *SDK_ARGS,
                  f"-DSIGHT_ORT_LIBRARY={alternate}"],
                 capture_output=True, text=True, timeout=90,
             )
@@ -85,7 +90,7 @@ class ReleaseSafetyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="sight-install-guard-") as tmp:
             build = pathlib.Path(tmp) / "build"
             configured = subprocess.run(
-                ["cmake", "-S", str(ROOT), "-B", str(build)],
+                ["cmake", "-S", str(ROOT), "-B", str(build), *SDK_ARGS],
                 capture_output=True, text=True, timeout=90,
             )
             self.assertEqual(configured.returncode, 0, configured.stderr[-2000:])
