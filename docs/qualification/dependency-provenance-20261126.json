@@ -1,0 +1,53 @@
+{
+  "date": "2026-11-26",
+  "onnxruntime": {
+    "version": "1.17.1",
+    "upstream_commit": "8f5c79cb63f09ef1302e85081093a3fe4da1bc7d",
+    "publisher_archive_status": "404 in qualification environment",
+    "independent_mirror": "https://huggingface.co/csukuangfj/onnxruntime-libs/resolve/cfdd6200252fa195b15ea98800f716f19355f9e6/onnxruntime-linux-x64-1.17.1.tgz",
+    "archive_sha256": "89b153af88746665909c758a06797175ae366280cbf25502c41eb5955f9a555e",
+    "files": {
+      "external/onnxruntime-linux-x64-1.17.1/GIT_COMMIT_ID": "a79aef06d28ff838483256e9503339e7e67f1c8839f159997495a6ff1f53bad7",
+      "external/onnxruntime-linux-x64-1.17.1/LICENSE": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c",
+      "external/onnxruntime-linux-x64-1.17.1/ThirdPartyNotices.txt": "4f9e2bb7b4b407d710a68168615bbc6f70e3d7cc8ba9410fb6c65d92fa71accf",
+      "external/onnxruntime-linux-x64-1.17.1/VERSION_NUMBER": "b1529c94047dde76b6f72d4c16618daae5a7b89be3b36604513c1ec4c5a24b8d",
+      "external/onnxruntime-linux-x64-1.17.1/include/cpu_provider_factory.h": "0de52d129c718c07ee71a16b4953d8d483df019746a11caad77a0650a2f4ed47",
+      "external/onnxruntime-linux-x64-1.17.1/include/onnxruntime_c_api.h": "7e47eb78563da119f740dc0ddfda96800e779e0bcbd169a9a49e9c10746c4cd5",
+      "external/onnxruntime-linux-x64-1.17.1/include/onnxruntime_cxx_api.h": "5cfb60c7222086b89724d3168267ab25af9951e15864bf54a8fdf7429b771021",
+      "external/onnxruntime-linux-x64-1.17.1/include/onnxruntime_cxx_inline.h": "d8b059c29ef378eee31c0b4d54347489a0e3abe1a4135c7a19c49b32661bfbc3",
+      "external/onnxruntime-linux-x64-1.17.1/include/onnxruntime_float16.h": "ecdcb4a53176c8b3bbcf674788fcf5ec923fb2b5c762c3f6cfb56fdb6c259aa1",
+      "external/onnxruntime-linux-x64-1.17.1/include/onnxruntime_run_options_config_keys.h": "25b0d8e767fc72d560532541537ac07d404a8bf94dffaf78f3069fc20240b76e",
+      "external/onnxruntime-linux-x64-1.17.1/include/onnxruntime_session_options_config_keys.h": "dacc5b8a417f9fe9dc9452255dabad408772e94d6d981d5fc463f90cf52f0438",
+      "external/onnxruntime-linux-x64-1.17.1/include/onnxruntime_training_c_api.h": "62e71166562f82be485b2d48af31efc6236add1f5c3a9da2b029466a56f4a03e",
+      "external/onnxruntime-linux-x64-1.17.1/include/onnxruntime_training_cxx_api.h": "349076bd5579c044ab876d63b39eb8baced0ba910ab771feef9d2024587a8133",
+      "external/onnxruntime-linux-x64-1.17.1/include/onnxruntime_training_cxx_inline.h": "3f133849e78052ae9a5c776cb7e95f6411139387339ccb9ccb40456ab658646c",
+      "external/onnxruntime-linux-x64-1.17.1/include/provider_options.h": "cb7206ffd06ba31b9f7e5f6089a6206f0c720c10c3adcc61db7f829c86691cfc",
+      "external/onnxruntime-linux-x64-1.17.1/lib/libonnxruntime.so.1.17.1": "a34d8c226994dd4af2b2250442fc236ebba97aefc7ec451c35a86216588d2f69"
+    },
+    "scope": "all 16 retained files byte-identical to independently archived distribution; not publisher signature"
+  },
+  "libfacedetection": {
+    "upstream": "https://github.com/ShiqiYu/libfacedetection",
+    "comparison_revision": "acf7b254121927e7dced30e233a2e03119f28ea2",
+    "data_and_convolution": "identical after trailing whitespace normalization",
+    "model_header_differences": "same 1024-face cap and 16-short stride; upstream uses named constants, header comment differs; vendored older copyright notice preserved",
+    "files": {
+      "src/3rdparty/libfacedetection/LICENSE": "b56e8d53e1d32a39191d032c532852a577e02c6a31a4a22fc72951055602fd2e",
+      "src/3rdparty/libfacedetection/facedetectcnn-data.cpp": "7de6467d28df2689fb9d21f780a3f20ac24a166104a671e09afb25aaabf833cf",
+      "src/3rdparty/libfacedetection/facedetectcnn-model.cpp": "60cb26ef61c644af5700e93dfbb9e978d9dafe452969bf5b7615bd446a221992",
+      "src/3rdparty/libfacedetection/facedetectcnn.cpp": "4d463c081bc33037bcb1df532607ab6063a7b3ff52b113be58f536265c2cc740",
+      "src/3rdparty/libfacedetection/facedetectcnn.h": "2400652a184f5550b6c9473582b0e96659467ed0315439d060e7f714b2115bc1",
+      "src/3rdparty/libfacedetection/facedetection_export.h": "5a40af82637c4697321d77305ac2d443c054857777a1077f3f9f29e75d9e701b"
+    },
+    "scope": "source comparison, BSD notice retained; not claim of exact upstream snapshot"
+  },
+  "mediapipe": {
+    "publisher": "https://pypi.org/project/mediapipe/1.2.3/",
+    "wheel_sha256": "1fcda646cc7b96f73453acc416ce31d0fba287d0f1fc095865272a7ea6986497",
+    "elf_sha256": "7ce8b23159d3fd4e8b727e35afbfb35f3d45d6bde1ec11cc01c316b3bf469f63",
+    "elf_size": 127908512,
+    "default_stage": false,
+    "verified_extraction": true
+  },
+  "publication_approved": false
+}

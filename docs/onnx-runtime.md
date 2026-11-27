@@ -19,8 +19,10 @@ The local library's SHA-256 at this checkpoint is
 This is a **local artifact fingerprint**, not proof of correspondence to an
 official upstream release. The 2026-11-26 attempt to download the
 original v1.17.1 upstream Linux archive returned HTTP 404, and the release
-lookup failed. The original binary remains intact; confirm provenance or
-qualify a separately acquired compatible runtime before redistribution.
+lookup failed. The original binary remains intact. A pinned independent mirror archive was
+subsequently recovered; all 16 retained files, including the ELF and both
+notices, are byte-identical. See the [dependency provenance receipt](qualification/dependency-provenance-20261126.json).
+This corroborates the package origin but is not a publisher signature.
 
 The source bundle formerly included upstream's generic `README.md` and
 `Privacy.md`, but omitted much of the upstream repository they referenced.

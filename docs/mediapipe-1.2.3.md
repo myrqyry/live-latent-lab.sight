@@ -27,9 +27,19 @@ field empty, without silently falling back to the old MediaPipe ABI.
 This local discovery checks filename and known ABI size, not a live
 SHA-256: validate any manually supplied runtime before installing it.
 
-A wheel is a ZIP archive. Extract just that shared-library member into
-a user-controlled directory, **outside** the existing Sight installation,
-then verify its checksum using:
+A wheel is a ZIP archive. The checked-in helper verifies the complete wheel,
+extracts only the expected C library, checks its size and SHA-256, and
+refuses to overwrite existing files. Download the publisher wheel yourself
+using the link above and retain its LICENSE/NOTICE. Run in a user-owned
+directory outside OBS:
+
+```sh
+mkdir -p "$HOME/.local/share/sight-runtimes/mediapipe-1.2.3"
+python3 tools/acquire_mediapipe.py /path/to/mediapipe-1.2.3-py3-none-manylinux_2_28_x86_64.whl \
+  "$HOME/.local/share/sight-runtimes/mediapipe-1.2.3/libmediapipe.so"
+```
+
+Verify independently if desired:
 
     sha256sum /full/path/to/1.2.3/libmediapipe.so
 

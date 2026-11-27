@@ -265,6 +265,7 @@ if(SIGHT_PYTHON3_EXECUTABLE)
         COMMAND "${SIGHT_PYTHON3_EXECUTABLE}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_release_safety.py")
     set_tests_properties(sight_release_safety PROPERTIES TIMEOUT 60)
+    add_test(NAME sight_acquire_mediapipe_unit COMMAND "${SIGHT_PYTHON3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_acquire_mediapipe.py")
 endif()
 add_executable(sight_subject_motion_test tests/subject_motion_test.cpp)
 target_include_directories(sight_subject_motion_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -1460,6 +1461,12 @@ message(STATUS "ONNX Runtime: ${SIGHT_ORT_LIBRARY}")
 
 # The language data is deliberately external to the plugin package. A
 # configured real model enables reproducible OCR inference/render tests.
+if(SIGHT_HAVE_OCR)
+    add_executable(sight_ocr_output_test tests/ocr_output_test.cpp)
+    target_include_directories(sight_ocr_output_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    add_test(NAME sight_ocr_output_unit COMMAND sight_ocr_output_test)
+endif()
+
 set(SIGHT_OCR_TESSDATA_DIR "" CACHE PATH "Directory with eng.traineddata for OCR verification")
 if(SIGHT_HAVE_OCR AND SIGHT_OCR_TESSDATA_DIR AND
    EXISTS "${SIGHT_OCR_TESSDATA_DIR}/eng.traineddata" AND SIGHT_PYTHON3_EXECUTABLE)
