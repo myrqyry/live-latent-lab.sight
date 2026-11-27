@@ -1,0 +1,182 @@
+[
+  {
+    "variant": "xs-portrait",
+    "precision": "fp32",
+    "width": 240,
+    "height": 384,
+    "bytes": 3613647,
+    "sha256": "ada077894985240f37df9914e220eee963eefb0b375659713a664f0816084612",
+    "file": "xs-portrait.onnx",
+    "device": "cuda",
+    "p50_ms": 1.117,
+    "p90_ms": 2.496,
+    "range": [
+      0.0,
+      1.0
+    ]
+  },
+  {
+    "variant": "xs-portrait",
+    "precision": "fp16",
+    "width": 240,
+    "height": 384,
+    "bytes": 1897979,
+    "sha256": "f70f89e229accbb60ccebb7186f99a6e5d12f1855e2d33f1e4232d41b79227e1",
+    "file": "xs-portrait-fp16-io32.onnx",
+    "device": "cuda",
+    "p50_ms": 1.24,
+    "p90_ms": 2.652,
+    "range": [
+      0.0,
+      1.0
+    ],
+    "mae": 9.4e-05,
+    "p99": 0.002422,
+    "edge_mae": 0.004974,
+    "iou": 0.999821
+  },
+  {
+    "variant": "small-landscape",
+    "precision": "fp32",
+    "width": 384,
+    "height": 224,
+    "bytes": 3613647,
+    "sha256": "e6aca89d9df1cfe26670693eaf138d615b3b74979fe613f8f0195e9f5da14a90",
+    "file": "small-landscape.onnx",
+    "device": "cuda",
+    "p50_ms": 1.151,
+    "p90_ms": 2.592,
+    "range": [
+      0.0,
+      1.0
+    ]
+  },
+  {
+    "variant": "small-landscape",
+    "precision": "fp16",
+    "width": 384,
+    "height": 224,
+    "bytes": 1897979,
+    "sha256": "c46bc8927b8b4c6cc53c6b325fe7d72d0793bfb7a9002cea196605e44ea19acc",
+    "file": "small-landscape-fp16-io32.onnx",
+    "device": "cuda",
+    "p50_ms": 1.168,
+    "p90_ms": 1.88,
+    "range": [
+      0.0,
+      1.0
+    ],
+    "mae": 7.5e-05,
+    "p99": 0.001493,
+    "edge_mae": 0.004767,
+    "iou": 0.999876
+  },
+  {
+    "variant": "medium-landscape",
+    "precision": "fp32",
+    "width": 512,
+    "height": 320,
+    "bytes": 12959999,
+    "sha256": "a0b385d6690b2d08c1e393ff2258b6f3b3065d8bee0f1ff0f0ce2d68a0ce0cf7",
+    "file": "medium-landscape.onnx",
+    "device": "cuda",
+    "p50_ms": 1.64,
+    "p90_ms": 2.884,
+    "range": [
+      0.0,
+      0.9999985694885254
+    ]
+  },
+  {
+    "variant": "medium-landscape",
+    "precision": "fp16",
+    "width": 512,
+    "height": 320,
+    "bytes": 6599302,
+    "sha256": "4d32fc8e3a832db6252daae7022582c0c4a9bd9bf02ab10f1dbc52916702949f",
+    "file": "medium-landscape-fp16-io32.onnx",
+    "device": "cuda",
+    "p50_ms": 1.814,
+    "p90_ms": 3.703,
+    "range": [
+      0.0,
+      1.0
+    ],
+    "mae": 4.9e-05,
+    "p99": 0.000854,
+    "edge_mae": 0.003032,
+    "iou": 0.999892
+  },
+  {
+    "variant": "large-landscape",
+    "precision": "fp32",
+    "width": 640,
+    "height": 400,
+    "bytes": 14209298,
+    "sha256": "2dab0b195cd712477a1549d38465e28dcca4ad05efe407c9406f08caa6c6e4da",
+    "file": "large-landscape.onnx",
+    "device": "cuda",
+    "p50_ms": 2.369,
+    "p90_ms": 4.601,
+    "range": [
+      0.0,
+      1.0
+    ]
+  },
+  {
+    "variant": "large-landscape",
+    "precision": "fp16",
+    "width": 640,
+    "height": 400,
+    "bytes": 7285632,
+    "sha256": "8ff42b33538a1505590b24f10d5aa7d80624fc30ec98500fb17f24ed8c202657",
+    "file": "large-landscape-fp16-io32.onnx",
+    "device": "cuda",
+    "p50_ms": 2.028,
+    "p90_ms": 4.294,
+    "range": [
+      0.0,
+      1.0
+    ],
+    "mae": 4.4e-05,
+    "p99": 0.000798,
+    "edge_mae": 0.003052,
+    "iou": 0.999925
+  },
+  {
+    "variant": "xl-landscape",
+    "precision": "fp32",
+    "width": 1280,
+    "height": 768,
+    "bytes": 29198204,
+    "sha256": "9ee02f5a73df90d5b62af667eaf57ca85a4065e7fe676e845d4a28d410f56daa",
+    "file": "xl-landscape.onnx",
+    "device": "cuda",
+    "p50_ms": 6.356,
+    "p90_ms": 7.651,
+    "range": [
+      1.1920928955078125e-07,
+      1.0
+    ]
+  },
+  {
+    "variant": "xl-landscape",
+    "precision": "fp16",
+    "width": 1280,
+    "height": 768,
+    "bytes": 14736443,
+    "sha256": "328e94028aa9e76d4fcdad0cd3ea9e3fed4d330738bbae3a0b0eecb0b6de154f",
+    "file": "xl-landscape-fp16-io32.onnx",
+    "device": "cuda",
+    "p50_ms": 5.905,
+    "p90_ms": 7.089,
+    "range": [
+      1.1920928955078125e-07,
+      1.0
+    ],
+    "mae": 5.3e-05,
+    "p99": 0.000734,
+    "edge_mae": 0.004008,
+    "iou": 0.999903
+  }
+]

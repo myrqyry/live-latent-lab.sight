@@ -1,3 +1,5 @@
+#include "common/backend-status.hpp"
+#include "common/model-diagnostics.hpp"
 #include "common/preferences.hpp"
 #include <obs-module.h>
 #include <callback/proc.h>
@@ -244,6 +246,7 @@ struct TrackingFilter {
     std::thread worker;
     bool stopping=false,loading=false,pending=false;
     std::string requested_model,requested_library,requested_detector;
+    sight_backend::Status backend_status;
     int requested_detector_backend=0;
     NativeOptions requested_options{};
     uint64_t generation=0;
@@ -411,6 +414,16 @@ void worker_main(TrackingFilter *f) {
                 : holistic
                     ? holistic_tracker.load(lib,model,f->holistic_person_mask.load(),native.holistic)
                     : tracker.load(lib,model,kind,native.tasks));
+            // Capture the actual load error before a failed engine is destroyed.
+            std::string load_error;
+            const char* provider="MediaPipe CPU";
+#ifdef SIGHT_HAVE_RTMW
+            if(mode==Mode::Rtmw){
+                provider=use_yolox?"LiteRT GPU (RTMW + YOLOX)":"LiteRT GPU (RTMW) + MediaPipe CPU detector";
+                if(!success&&rtmw_tracker)load_error=rtmw_tracker->last_error();
+            } else
+#endif
+            if(!success)load_error=objects?object_detector.last_error():holistic?holistic_tracker.last_error():tracker.last_error();
             if(!success){
                 tracker.unload();holistic_tracker.unload();object_detector.unload();
 #ifdef SIGHT_HAVE_RTMW
@@ -439,6 +452,7 @@ void worker_main(TrackingFilter *f) {
             {
                 std::lock_guard lock(f->input_mutex);
                 if(generation!=f->generation)continue;
+                f->backend_status.complete(model,success,provider,load_error,mode==Mode::None);
                 f->model_ready=success;
                 f->wants_frame=success;
                 if(!success)withdraw_channels(f);
@@ -521,8 +535,10 @@ void worker_main(TrackingFilter *f) {
         if(kind==sight::TrackingKind::WholeBody) {
             sight::TrackingData result;
             const bool success=rtmw_tracker->detect(frame.data(),w,h,next_timestamp,result);
+            const auto elapsed=std::chrono::duration<double,std::milli>(Clock::now()-before).count();
             std::lock_guard lock(f->input_mutex);
             if(generation!=f->generation||!f->model_ready)continue;
+            f->backend_status.health.record(success,elapsed,Clock::now());
             if(!success) {
                 withdraw_channels(f);
                 frame_dedup.reset();
@@ -557,8 +573,10 @@ void worker_main(TrackingFilter *f) {
             std::vector<sight::ObjectDetection> detected;
             const bool success=object_detector.detect(
                 frame.data(),w,h,next_timestamp,detected);
+            const auto elapsed=std::chrono::duration<double,std::milli>(Clock::now()-before).count();
             std::lock_guard input_lock(f->input_mutex);
             if(generation!=f->generation || !f->model_ready)continue;
+            f->backend_status.health.record(success,elapsed,Clock::now());
             if(!success) {
                 blog(LOG_ERROR,"[Sight/Object] Native detection failed: %s",
                      object_detector.last_error().c_str());
@@ -601,6 +619,7 @@ void worker_main(TrackingFilter *f) {
                 Clock::now()-before).count();
             std::lock_guard lock(f->input_mutex);
             if(generation!=f->generation || !f->model_ready)continue;
+            f->backend_status.health.record(success,elapsed,Clock::now());
             if(!success) {
                 withdraw_channels(f);
                 // A failed inference cannot leave a frozen Holistic preview.
@@ -698,6 +717,7 @@ void worker_main(TrackingFilter *f) {
             blog(LOG_ERROR,"[Sight/Tasks] Real tracking failed: %s",tracker.last_error().c_str());
             std::lock_guard lock(f->input_mutex);
             if(generation==f->generation&&f->model_ready){
+                f->backend_status.health.record(false,elapsed,Clock::now());
                 if(kind==sight::TrackingKind::Face){
                     withdraw_channels(f);
                     f->reset_overlay=true;
@@ -711,6 +731,7 @@ void worker_main(TrackingFilter *f) {
         {
             std::lock_guard lock(f->input_mutex);
             if(generation!=f->generation||!f->model_ready)continue;
+            f->backend_status.health.record(true,elapsed,Clock::now());
             if(kind==sight::TrackingKind::Face && quality_mode!=sight::FaceQualityMode::Legacy)
                 face_quality.apply(landmarks,{frame.data(),w,h,frame.size()},sample_time,
                     quality_mode,quality_strength);
@@ -847,6 +868,7 @@ void* create_common(obs_data_t *settings, obs_source_t *source,Mode selected) {
     f->capture_cadence=cadence(obs_data_get_int(settings,CADENCE));
     f->smoothing=smooth(obs_data_get_int(settings,SMOOTH));
     f->face_quality_mode=int(std::clamp<int64_t>(obs_data_get_int(settings,FACE_QUALITY),0,2));
+    f->backend_status.request(f->requested_model,f->mode==Mode::None);
     f->loading=!f->requested_model.empty();
     ++f->generation;
     f->worker=std::thread(worker_main,f);
@@ -989,6 +1011,7 @@ void update_mode(TrackingFilter* f,obs_data_t *settings,Mode selected) {
         f->capture_edge=edge;
         if(needs_load || !f->model_ready) {
             f->requested_model=path;
+            f->backend_status.request(path,selected==Mode::None);
             f->requested_library=lib;
             f->requested_detector=detector_path;
             f->requested_detector_backend=detector_backend;
@@ -998,6 +1021,7 @@ void update_mode(TrackingFilter* f,obs_data_t *settings,Mode selected) {
             f->wants_frame=false;
         } else f->wants_frame=true;
         f->pending=false;
+        f->backend_status.health={};
         ++f->generation;
         f->first_result=false;
         f->next_capture=0;
@@ -1097,6 +1121,7 @@ void add_rtmw_properties(obs_properties_t* p,const std::string& prefix) {
     auto key=[&](const char* k){return prefix+k;};
     const auto dir=sight_preferences::browse(models_dir());
     auto* model=obs_properties_add_path(p,key(MODEL_PATH).c_str(),"RTMW-m WholeBody model",OBS_PATH_FILE,"TFLite model (*.tflite)",dir.c_str());
+    sight_diagnostics::add<sight_diagnostics::Format::Tflite>(p,model);
     obs_property_set_long_description(model,"133 COCO WholeBody 2D points. Strict LiteRT GPU acceleration; no CPU fallback.");
     auto* backend=obs_properties_add_list(p,key(RTMW_BACKEND).c_str(),"Person detector backend",OBS_COMBO_TYPE_LIST,OBS_COMBO_FORMAT_INT);
     obs_property_list_add_int(backend,"Auto (recognized model filename)",0);
@@ -1104,8 +1129,10 @@ void add_rtmw_properties(obs_properties_t* p,const std::string& prefix) {
     obs_property_list_add_int(backend,"EfficientDet-Lite0 (MediaPipe CPU)",2);
     obs_property_set_long_description(backend,"Auto selects GPU for yolox_nano.tflite and otherwise the MediaPipe detector. Explicit selection supports alternate filenames. No silent fallback.");
     auto* detector=obs_properties_add_path(p,key(RTMW_DETECTOR).c_str(),"Person detector model",OBS_PATH_FILE,"TFLite model (*.tflite)",dir.c_str());
+    sight_diagnostics::add<sight_diagnostics::Format::Tflite>(p,detector);
     obs_property_set_long_description(detector,"Use the qualified YOLOX-Nano 416x416 raw-head LiteRT model or a compatible MediaPipe detector. Changing backend/model reloads the tracker.");
-    obs_properties_add_path(p,key(RUNTIME_PATH).c_str(),"MediaPipe 1.2.3 runtime (CPU detector only)",OBS_PATH_FILE,"Shared library (*.so)",sight_preferences::browse(std::filesystem::path(own_library_path()).parent_path().string(),true).c_str());
+    auto* runtime=obs_properties_add_path(p,key(RUNTIME_PATH).c_str(),"MediaPipe 1.2.3 runtime (CPU detector only)",OBS_PATH_FILE,"Shared library (*.so)",sight_preferences::browse(std::filesystem::path(own_library_path()).parent_path().string(),true).c_str());
+    sight_diagnostics::add<sight_diagnostics::Format::OptionalMediaPipe>(p,runtime);
     auto* edge=obs_properties_add_list(p,key(EDGE).c_str(),"Tracking input resolution",OBS_COMBO_TYPE_LIST,OBS_COMBO_FORMAT_INT);
     for(int n:{256,512,640})obs_property_list_add_int(edge,std::to_string(n).c_str(),n);
     auto* cadence=obs_properties_add_list(p,key(CADENCE).c_str(),"Capture no more often than every N OBS frames",OBS_COMBO_TYPE_LIST,OBS_COMBO_FORMAT_INT);
@@ -1132,6 +1159,8 @@ void add_properties(obs_properties_t* p,obs_data_t* settings,Mode mode,const std
         objects?"MediaPipe Object Detector model":"MediaPipe Tasks .task model",
         OBS_PATH_FILE,objects?"TFLite model (*.tflite)":"MediaPipe task (*.task)",
         default_dir.c_str());
+    if(objects) sight_diagnostics::add<sight_diagnostics::Format::Tflite>(p,model);
+    else sight_diagnostics::add<sight_diagnostics::Format::Task>(p,model);
     obs_property_set_long_description(model,objects
         ? "Choose a MediaPipe-compatible object detector with TFLite metadata, "
           "such as EfficientDet-Lite0. No model is bundled. Missing or invalid "
@@ -1144,6 +1173,8 @@ void add_properties(obs_properties_t* p,obs_data_t* settings,Mode mode,const std
         (holistic||objects) ? "MediaPipe 1.2.3 runtime (auto-detected)"
                          : "MediaPipe Tasks C runtime",
         OBS_PATH_FILE,"Shared library (*.so)",sight_preferences::browse(runtime_dir,true).c_str());
+    if(holistic||objects) sight_diagnostics::add<sight_diagnostics::Format::MediaPipe123>(p,runtime);
+    else sight_diagnostics::add<sight_diagnostics::Format::MediaPipe>(p,runtime);
     obs_property_set_long_description(runtime, (holistic||objects)
         ? "Sight automatically selects the verified 1.2.3 runtime installed "
           "beside this plugin. Browse only to override it or if no compatible "
@@ -1333,6 +1364,7 @@ obs_properties_t* unified_properties(void* data){
     }
     obs_property_set_modified_callback(selector,unified_changed);
     unified_visibility(p,selected);
+    sight_backend::add(p,static_cast<TrackingFilter*>(data));
     obs_properties_add_text(p,"unified_note","One model pipeline at a time. Switching releases the previous model and its channels. Add another Tracking filter to run trackers simultaneously.",OBS_TEXT_INFO);
     return p;
 }

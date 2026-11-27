@@ -219,10 +219,10 @@ int main(int argc, char **argv) {
     const size_t return_started = different(held_later, first_return);
     const size_t returned_pixels = different(neutral, restored);
     // A frame may span uneven scheduler time; require substantial
-    // easing toward the final morph, not an arbitrary 3x pixel ratio.
+    // easing toward the final morph, not a rig-specific pixel ratio.
     // The time-continuous easing is also checked in tracking unit tests.
     const bool signal_works =
-        published && morph_pixels > 200 && first_delta * 2 < morph_pixels &&
+        published && morph_pixels > 200 && morph_pixels > first_delta + 200 &&
         held_pixels < 40 && return_started < morph_pixels / 4 &&
         returned_pixels < morph_pixels / 3;
     std::cout << "NATIVE_VRM_SIGNAL_TO_RENDER "

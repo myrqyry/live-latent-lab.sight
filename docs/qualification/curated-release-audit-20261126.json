@@ -1,0 +1,86 @@
+{
+  "commits": 9,
+  "unique_blobs": 387,
+  "paths": 318,
+  "gitlinks": [
+    [
+      "libs/stable-diffusion.cpp",
+      "032824180421750862cd5250706bbe3c28f24832"
+    ]
+  ],
+  "binary": [
+    {
+      "paths": [
+        "external/onnxruntime-linux-x64-1.17.1/lib/libonnxruntime.so.1.17.1"
+      ],
+      "bytes": 15461048,
+      "sha": "c286d18832a74c10c776b3057c3e445c68e1e3cb"
+    },
+    {
+      "paths": [
+        "tests/fixtures/ocr-text.gray.gz"
+      ],
+      "bytes": 4095,
+      "sha": "453d7cfdf64aad399fab03973a8cf66103357c98"
+    }
+  ],
+  "large": [
+    {
+      "paths": [
+        "external/onnxruntime-linux-x64-1.17.1/lib/libonnxruntime.so.1.17.1"
+      ],
+      "bytes": 15461048,
+      "sha": "c286d18832a74c10c776b3057c3e445c68e1e3cb"
+    },
+    {
+      "paths": [
+        "libs/entt/single_include/entt/entt.hpp"
+      ],
+      "bytes": 3276073,
+      "sha": "7751ebb4f258a41008ae119b5369295c69613dd6"
+    }
+  ],
+  "history_flags": {
+    "private_key": [],
+    "github_token": [],
+    "openai_key": [],
+    "aws_key": [],
+    "personal_path": [],
+    "private_repo": []
+  },
+  "pending_paths": 64,
+  "pending_flags": {
+    "private_key": [],
+    "github_token": [],
+    "openai_key": [],
+    "aws_key": [],
+    "personal_path": [],
+    "private_repo": []
+  },
+  "date": "2026-11-26",
+  "scope": "nine pre-integration reachable commits and 64 pending paths; targeted pattern scan, not legal or exhaustive secret clearance",
+  "qualification": {
+    "configured_cases": 115,
+    "first_run_passed": 114,
+    "failed_first_run": [
+      "sight_native_vrm_obs_render"
+    ],
+    "corrected_vrm_test_passed": true,
+    "stage_files_default": 18,
+    "local_mediapipe_default_excluded": true,
+    "local_mediapipe_explicit_opt_in_verified": true,
+    "untracked_data_canary_excluded": true
+  },
+  "entt": {
+    "version": "3.16.0",
+    "header_sha256": "3272191cf3d46cec92368f918695502dc8d174c92e0b8b4a5d53fed28e240c9f",
+    "upstream_header_exact": true,
+    "license_added": "libs/entt/LICENSE"
+  },
+  "onnx_runtime": {
+    "version": "1.17.1",
+    "local_sha256": "a34d8c226994dd4af2b2250442fc236ebba97aefc7ec451c35a86216588d2f69",
+    "upstream_download": "HTTP 404; provenance unresolved"
+  },
+  "publication_approved": false
+}

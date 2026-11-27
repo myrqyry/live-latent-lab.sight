@@ -1,4 +1,8 @@
 #include "onnx_depth_processor.hpp"
+#include "onnx_session.hpp"
+#ifdef SIGHT_HAVE_RUST_FRAME_CORE
+#include "rust_frame_core.h"
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -9,9 +13,10 @@
 
 namespace lll {
 
-bool OnnxDepthProcessor::load(const std::string &model_path)
+bool OnnxDepthProcessor::load(const std::string &model_path, bool prefer_gpu)
 {
     session_.reset();
+    provider_=nullptr;
     last_error_.clear();
     input_name_.clear();
     output_name_.clear();
@@ -26,8 +31,7 @@ bool OnnxDepthProcessor::load(const std::string &model_path)
             std::min(4u, std::max(1u, logical / 2u))));
         options.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
         options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-        auto candidate = std::make_unique<Ort::Session>(environment_,
-                                                       model_path.c_str(), options);
+        auto candidate = open_onnx_session(environment_, model_path.c_str(), options, prefer_gpu, &provider_);
         if (candidate->GetInputCount() != 1 || candidate->GetOutputCount() != 1)
             throw std::runtime_error("Depth Anything needs one input and one output");
         auto in_type = candidate->GetInputTypeInfo(0);
@@ -69,11 +73,20 @@ bool OnnxDepthProcessor::estimate(const uint8_t *rgb, uint32_t width, uint32_t h
         static constexpr float mean[] = {0.485f, 0.456f, 0.406f};
         static constexpr float stdv[] = {0.229f, 0.224f, 0.225f};
         normalized_.resize(3 * plane);
+#ifdef SIGHT_HAVE_RUST_FRAME_CORE
+        if (sight_normalize_rgb_to_chw_f32_v1(
+                rgb, plane * 3, width, height, mean, stdv,
+                normalized_.data(), normalized_.size()) != 1) {
+            last_error_ = "Rust tensor preparation rejected RGB frame dimensions";
+            return false;
+        }
+#else
         for (size_t p = 0; p < plane; ++p) {
             for (size_t c = 0; c < 3; ++c)
                 normalized_[c * plane + p] =
                     (static_cast<float>(rgb[p * 3 + c]) / 255.0f - mean[c]) / stdv[c];
         }
+#endif
         const int64_t dimensions[] = {1, 3, static_cast<int64_t>(height),
                                          static_cast<int64_t>(width)};
         auto tensor = Ort::Value::CreateTensor<float>(

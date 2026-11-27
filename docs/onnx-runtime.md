@@ -17,7 +17,10 @@ The checked-in `external/onnxruntime` path is a symlink to
 The local library's SHA-256 at this checkpoint is
 `a34d8c226994dd4af2b2250442fc236ebba97aefc7ec451c35a86216588d2f69`.
 This is a **local artifact fingerprint**, not proof of correspondence to an
-official upstream release.
+official upstream release. The 2026-11-26 attempt to download the
+original v1.17.1 upstream Linux archive returned HTTP 404, and the release
+lookup failed. The original binary remains intact; confirm provenance or
+qualify a separately acquired compatible runtime before redistribution.
 
 The source bundle formerly included upstream's generic `README.md` and
 `Privacy.md`, but omitted much of the upstream repository they referenced.

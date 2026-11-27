@@ -22,7 +22,25 @@ require_file() {
   fi
 }
 require_file "bin/64bit/live-latent-lab-sight.so"
-require_file "bin/64bit/libonnxruntime.so.1.17.1"
+module="$prefix/bin/64bit/live-latent-lab-sight.so"
+dynamic="$(readelf -d "$module")"
+# Match the actual linked SONAME, not the version of a former local build.
+mapfile -t needed < <(printf '%s\n' "$dynamic" | sed -n 's/.*(NEEDED).*\[\([^]]*\)\].*/\1/p')
+ort_found=0
+for soname in "${needed[@]}"; do
+  case "$soname" in
+    libonnxruntime.so|libonnxruntime.so.*)
+      require_file "bin/64bit/$soname"
+      ort_found=1 ;;
+    libLiteRt.so)
+      require_file "bin/64bit/$soname"
+      require_file "data/licenses/litert/LICENSE" ;;
+  esac
+done
+if [[ "$ort_found" != 1 ]]; then
+  echo "RELEASE_STAGE_MISSING_ONNX_NEEDED=YES" >&2
+  exit 1
+fi
 require_file "data/sight-tracking-overlay.effect"
 require_file "data/sight-depth-camera.effect"
 require_file "data/locale/en-US.ini"
@@ -37,7 +55,7 @@ if [[ -e "$prefix/bin/64bit/libmediapipe.so" ]]; then
 else
   echo "SIGHT_STAGE_MEDIAPIPE_INCLUDED=NO (face/body/hand require a separate runtime)"
 fi
-if find "$prefix" -type f \( -name '*.onnx' -o -name '*.task' \) -print -quit | grep -q .; then
+if find "$prefix" -type f \( -iname '*.onnx' -o -iname '*.task' -o -iname '*.tflite' -o -iname '*.safetensors' -o -iname '*.pt' -o -iname '*.pth' -o -iname '*.gguf' -o -iname '*.ckpt' \) -print -quit | grep -q .; then
   echo "RELEASE_STAGE_UNEXPECTED_MODEL_BUNDLE=YES" >&2
   exit 1
 fi
@@ -45,6 +63,19 @@ if ! readelf -d "$prefix/bin/64bit/live-latent-lab-sight.so" |
     grep -E 'RPATH|RUNPATH' | grep -Fq "\$ORIGIN"; then
   echo "RELEASE_STAGE_NON_RELOCATABLE_RPATH=YES" >&2
   exit 1
+fi
+# CUDA is optional and its dependencies may be provisioned by the target.
+# Keep host-loader diagnostics distinct from the contents check.
+provider="$prefix/bin/64bit/libonnxruntime_providers_cuda.so"
+if [[ -e "$provider" ]]; then
+  require_file "bin/64bit/libonnxruntime_providers_shared.so"
+  if provider_links="$(env -u LD_LIBRARY_PATH ldd "$provider" 2>&1)" &&
+      ! grep -q 'not found' <<< "$provider_links"; then
+    echo "SIGHT_STAGE_CUDA_PROVIDER_LINKS=RESOLVED (inference not tested)"
+  else
+    echo "SIGHT_STAGE_CUDA_PROVIDER_LINKS=UNRESOLVED (local GPU qualification required)"
+    grep 'not found' <<< "$provider_links" || true
+  fi
 fi
 echo "SIGHT_RELEASE_STAGE_FILES=$(find "$prefix" -type f | wc -l)"
 echo "SIGHT_RELEASE_STAGE_BYTES=$(du -sb "$prefix" | awk '{print $1}')"

@@ -32,8 +32,10 @@ separate from the experimental all-effects build.
 - **Optional Live2D source:** retained behind the existing local SDK build option.
   See [native Live2D development and publication boundary](live2d-native.md).
   The default candidate excludes Cubism; an enabled binary is not cleared.
-- **No model weights included:** users select compatible ONNX or
-  MediaPipe Tasks models themselves. Missing/unsupported models must remain
+- **No separately acquired model files included:** users select compatible ONNX or
+  MediaPipe Tasks models themselves. The vendored BSD face detector has
+  embedded learned arrays; its source provenance is reviewed separately.
+  Missing/unsupported models must remain
   unavailable, not return fabricated inference results.
 - **Privacy V2 is experimental:** face concealment is not a guarantee of
   anonymity, identity protection, or automatic text redaction.
@@ -120,7 +122,8 @@ See docs/object-tracking-mediapipe.md.
   any install files are written. A safe explicit --prefix remains available.
 - The real privacy OBS test no longer assumes /usr/local for image-source
   nor reads an older runtime out of the developer's installed Sight plugin.
-- The staged module contains required shader assets and third-party notices.
+- The staged module contains an explicit shader/preset/locale manifest and third-party notices.
+  Test-only MediaPipe runtime staging is off unless explicitly requested for local use.
   The stage verifies no ONNX or Tasks model weights were accidentally bundled.
 - Sight's versioned Tracking Signal Bus reader can share real face/body/hand
   results with HyperShaderFX in the same OBS process without second inference;

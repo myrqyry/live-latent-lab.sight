@@ -33,6 +33,47 @@ See [Depth provenance](../tests/README-depth.md) and
 and the tested Face/Pose/Gesture checksums. The exact Gesture Recognizer
 float16/1 URL is in [Hand provenance](../tests/README-hands.md).
 
+## Subject Cutout models
+
+Select the matching model family; do not infer normalization from filenames.
+The default U²-Net family also supports the qualified U²-NetP export.
+The native adapter preserves the existing full-resolution foreground RGB
+and uses a separate alpha mask. MODNet uses [-1,1] normalization, a
+512-pixel maximum inference dimension and multiples of 32. Longpipe
+uses [0,1] RGB and the fixed rectangular refined matting graph dimensions
+from its official ONNX export. MODNet and smaller Longpipe tiers use a
+capture edge up to 512 pixels; Large and XL allow up to their native
+640- and 1280-pixel canvas edges, bounded by source resolution.
+Select portrait or landscape weights to suit the source orientation.
+Longpipe uses the upstream fixed-canvas resize contract, not letterboxing
+or automatic orientation switching. See [Longpipe's ONNX guide](https://longpipe.dev/docs/onnx/).
+The shared matte and motion interfaces remain bounded to a 320-pixel
+analysis grid, independently of the higher-resolution rendered matte.
+Longpipe can optionally use a matching optical-flow ONNX model with
+Sight's matte stabilization control. See [flow setup and qualification](longpipe-flow.md).
+The upstream SDK's shared-encoder pipeline and frame-skipping strategy
+are not included.
+All five landscape tiers plus XS portrait have passed local native OBS
+rendering. See [Longpipe tier qualification](longpipe-tiers.md).
+
+[Precision qualification](cutout-precision.md): locally converted FP16
+variants with FP32 I/O passed CUDA rendering. Prefer FP32 for CPU.
+The experimental INT8 conversions did not pass the quality/performance
+comparison; do not substitute them for the verified weights.
+
+| Qualified local file | SHA-256 | Reference |
+|---|---|---|
+| u2netp.onnx | 309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8 | [U²-NetP](https://huggingface.co/nfa04/u2netp-onnx) |
+| modnet-fp32.onnx | 07c308cf0fc7e6e8b2065a12ed7fc07e1de8febb7dc7839d7b7f15dd66584df9 | [MODNet](https://huggingface.co/Xenova/modnet) |
+| longpipe-xs-landscape.onnx | 75749759daa4d7e839e8aa189ce6a4e95edc72253b1f5028e833455ebae2f792 | [Longpipe official exports](https://huggingface.co/Longpipe/longpipe/tree/main/onnx/xs) |
+
+U²-NetP and MODNet hashes match the local prior benchmark cache, not a
+fresh publisher checksum verification. Longpipe matches the publisher's
+ONNX manifest. Model assets remain outside Git. Consult upstream model
+terms before redistribution. Optional CTest inputs are SIGHT_U2NETP_MODEL,
+SIGHT_MODNET_MODEL, SIGHT_LONGPIPE_MODEL and SIGHT_CUTOUT_PORTRAIT
+(a 512x512 portrait fixture).
+
 ## Holistic model (MediaPipe 1.2.3 only)
 
 The candidate build's **LLL.sight Tracking → Holistic**

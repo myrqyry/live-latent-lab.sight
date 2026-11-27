@@ -1,4 +1,7 @@
 #include "enhancement_processor.hpp"
+#ifdef SIGHT_ANIMEGAN_ONLY
+#include "onnx_session.hpp"
+#endif
 #include "../common/sight-log.h"
 #include <util/bmem.h>
 #include <iostream>
@@ -6,6 +9,7 @@
 #include <cstring>
 #include <algorithm>
 #include <stdexcept>
+#include <thread>
 
 namespace lll {
 
@@ -22,6 +26,8 @@ EnhancementProcessor::~EnhancementProcessor() {
 
 bool EnhancementProcessor::load(const char* model_path, EnhanceModelType type, bool use_gpu) {
     ready_ = false;
+    provider_=nullptr;
+    last_error_.clear();
     session_.reset();
     if (!model_path || !*model_path) return false;
     type_ = type;
@@ -30,9 +36,19 @@ bool EnhancementProcessor::load(const char* model_path, EnhanceModelType type, b
         env_ = std::make_unique<Ort::Env>(ORT_LOGGING_LEVEL_WARNING, "EnhanceProcessor");
         
         Ort::SessionOptions session_opts;
-        session_opts.SetIntraOpNumThreads(1);
+        // Portrait Sketch is CPU-only in the validated build. One thread
+        // underutilizes the available cores, but using all cores can starve
+        // OBS. Reserve at least half the logical threads, capped at 4 workers.
+        const unsigned logical = std::thread::hardware_concurrency();
+        const int threads = type == EnhanceModelType::AnimeGANv3
+            ? static_cast<int>(std::min(4u, std::max(1u, logical / 2)))
+            : 1;
+        session_opts.SetIntraOpNumThreads(threads);
         session_opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
 
+#ifdef SIGHT_ANIMEGAN_ONLY
+        session_ = open_onnx_session(*env_, model_path, session_opts, use_gpu, &provider_);
+#else
         if (use_gpu) {
 #if defined(USE_OPENVINO_EP)
             OrtOpenVINOProviderOptions ov_opts;
@@ -46,6 +62,7 @@ bool EnhancementProcessor::load(const char* model_path, EnhanceModelType type, b
         }
 
         session_ = std::make_unique<Ort::Session>(*env_, model_path, session_opts);
+#endif
         // AnimeGANv3's actual ONNX contract is float32 NHWC -> NHWC.
         // Reject a different model rather than silently scrambling its pixels.
         if (type == EnhanceModelType::AnimeGANv3) {
@@ -87,11 +104,13 @@ bool EnhancementProcessor::load(const char* model_path, EnhanceModelType type, b
             output_names_.push_back(copy);
         }
         
-        sight_logf(LOG_INFO, "[Enhance] Loaded %s", model_path);
+        sight_logf(LOG_INFO, "[Enhance] Loaded %s (CPU intra-op threads: %d)",
+                   model_path, threads);
         ready_ = true;
         return true;
 
     } catch (const std::exception& e) {
+        last_error_=e.what();
         sight_logf(LOG_ERROR, "[Enhance] Failed to load: %s", e.what());
         ready_ = false;
         return false;

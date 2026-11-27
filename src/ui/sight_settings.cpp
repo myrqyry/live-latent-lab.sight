@@ -57,6 +57,9 @@ QWidget* makePage(QWidget*parent){
     link(layout,body,"Model compatibility and licensing guide",docs+"model-downloads.md");
     link(layout,body,"Portrait Sketch · AnimeGANv3 ONNX (usage restrictions apply)","https://huggingface.co/vumichien/AnimeGANv3_PortraitSketch");
     link(layout,body,"Subject Cutout · U²-Net","https://github.com/danielgatis/rembg/releases/tag/v0.0.0");
+    link(layout,body,"Subject Cutout · U²-NetP","https://huggingface.co/nfa04/u2netp-onnx");
+    link(layout,body,"Subject Cutout · MODNet","https://huggingface.co/Xenova/modnet");
+    link(layout,body,"Subject Cutout · Longpipe","https://huggingface.co/Longpipe/longpipe");
     link(layout,body,"Depth Camera · Depth Anything V2 Small FP32","https://huggingface.co/onnx-community/depth-anything-v2-small/blob/main/onnx/model.onnx");
     link(layout,body,"Face · MediaPipe Face Landmarker","https://developers.google.com/edge/mediapipe/solutions/vision/face_landmarker");
     link(layout,body,"Body · MediaPipe Pose Landmarker","https://developers.google.com/edge/mediapipe/solutions/vision/pose_landmarker");
@@ -75,6 +78,12 @@ QWidget* makePage(QWidget*parent){
     link(layout,body,"Cubism Native SDK · official download and terms","https://www.live2d.com/en/sdk/download/native/");
     link(layout,body,"Live2D · publication requirements","https://www.live2d.com/en/sdk/license/");
     link(layout,body,"ONNX Runtime · pinned dependency",docs+"onnx-runtime.md");
+#ifdef SIGHT_HAVE_NEURAL_RENDERING
+    link(layout,body,"Neural Rendering · model and runtime setup","https://github.com/myrqyry/live-latent-lab.sight#readme");
+#endif
+#ifdef SIGHT_HAVE_NATIVE_SD_IMAGE_SOURCE
+    link(layout,body,"Stable Diffusion · upstream runtime and model guidance","https://github.com/leejet/stable-diffusion.cpp");
+#endif
     layout->addStretch();return page;
 }
 bool savePage(QWidget*page){
@@ -97,6 +106,6 @@ void register_sight_settings(){
     if(section||!qobject_cast<QApplication*>(QCoreApplication::instance()))return;
     section=std::make_unique<plugin_settings::Section>("lll.sight","LLL.sight",makePage,savePage);
     section->scan();
-    blog(LOG_INFO,"[Sight] Native plugin settings bridge registered");
+    blog(LOG_INFO,"[Sight] SIGHT_FULL_SETTINGS_20261125_B71 Native plugin settings bridge registered");
 }
 void unregister_sight_settings(){section.reset();}

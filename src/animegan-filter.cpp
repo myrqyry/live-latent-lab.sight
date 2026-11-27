@@ -1,5 +1,8 @@
+#include "common/backend-status.hpp"
+#include "common/model-diagnostics.hpp"
 #include "common/preferences.hpp"
 #include <obs-module.h>
+#include <callback/proc.h>
 #include <graphics/graphics.h>
 #include <util/platform.h>
 
@@ -27,7 +30,7 @@ constexpr const char *DETAIL_SIZE = "detail_size";
 constexpr uint32_t DEFAULT_DETAIL_SIZE = 512;
 uint32_t validated_detail_size(int64_t size)
 {
-    return size == 256 || size == 512 || size == 768
+    return size == 256 || size == 512 || size == 768 || size == 1024
         ? static_cast<uint32_t>(size) : DEFAULT_DETAIL_SIZE;
 }
 // The convolution/downsample/upsample branches in this AnimeGANv3 model
@@ -64,8 +67,12 @@ struct AnimeGanFilter {
     bool stopping = false;
     bool load_requested = false;
     bool frame_pending = false;
+    // One capture per worker inference. Protected by input_mutex.
+    bool capture_in_flight = false;
+    std::atomic<int64_t> captures{0}, completed{0}, skipped{0};
     std::string requested_path;
     std::string active_path;
+    sight_backend::Status backend_status;
     uint64_t model_generation = 0;
     uint32_t frame_width = 0, frame_height = 0;
     std::vector<uint8_t> input_rgba;
@@ -119,12 +126,14 @@ void worker_main(AnimeGanFilter *f)
 
         if (do_load) {
             const bool loaded = !model_path.empty() &&
-                processor.load(model_path.c_str(), lll::EnhanceModelType::AnimeGANv3, false);
+                processor.load(model_path.c_str(), lll::EnhanceModelType::AnimeGANv3, true);
             {
                 std::lock_guard lock(f->input_mutex);
                 if (generation != f->model_generation)
                     continue;
+                f->capture_in_flight = false;
                 f->active_path = loaded ? model_path : std::string();
+                f->backend_status.complete(model_path,loaded,processor.configured_provider(),processor.last_error());
                 f->model_ready = loaded;
             }
             if (loaded)
@@ -135,8 +144,12 @@ void worker_main(AnimeGanFilter *f)
         }
 
         if (!f->model_ready || !w || !h ||
-            frame.size() != static_cast<size_t>(w) * h * 4)
+            frame.size() != static_cast<size_t>(w) * h * 4) {
+            std::lock_guard lock(f->input_mutex);
+            if (generation == f->model_generation)
+                f->capture_in_flight = false;
             continue;
+        }
 
         const uint32_t infer_w = aligned_size(w);
         const uint32_t infer_h = aligned_size(h);
@@ -153,10 +166,18 @@ void worker_main(AnimeGanFilter *f)
             }
         }
         std::vector<uint8_t> result(rgb.size());
-        if (!processor.process(rgb.data(), infer_w, infer_h,
-                               result.data(), infer_w, infer_h)) {
+        const auto inference_start=sight_backend::InferenceHealth::Clock::now();
+        const bool succeeded=processor.process(rgb.data(),infer_w,infer_h,result.data(),infer_w,infer_h);
+        const double inference_ms=std::chrono::duration<double,std::milli>(
+            sight_backend::InferenceHealth::Clock::now()-inference_start).count();
+        if (!succeeded) {
             blog(LOG_ERROR, "[Sight/AnimeGAN] Actual ONNX frame inference failed: %ux%u (captured %ux%u)",
                  infer_w, infer_h, w, h);
+            std::lock_guard lock(f->input_mutex);
+            if (generation == f->model_generation) {
+                f->backend_status.health.record(false,inference_ms,sight_backend::InferenceHealth::Clock::now());
+                f->capture_in_flight = false;
+            }
             continue;
         }
         // Crop padding from the inference result before scaling in OBS.
@@ -179,6 +200,9 @@ void worker_main(AnimeGanFilter *f)
             f->output_width = w;
             f->output_height = h;
             f->new_output = true;
+            f->backend_status.health.record(true,inference_ms,sight_backend::InferenceHealth::Clock::now());
+            ++f->completed;
+            f->capture_in_flight = false;
             if (!f->announced_first_frame) {
                 blog(LOG_INFO, "[Sight/AnimeGAN] First real frame processed: %ux%u (inference %ux%u)",
                      w, h, infer_w, infer_h);
@@ -188,14 +212,26 @@ void worker_main(AnimeGanFilter *f)
     }
 }
 
+void capture_stats_proc(void *data, calldata_t *args)
+{
+    auto *f = static_cast<AnimeGanFilter *>(data);
+    calldata_set_int(args, "captures", f->captures.load());
+    calldata_set_int(args, "completed", f->completed.load());
+    calldata_set_int(args, "skipped", f->skipped.load());
+}
+
 void *create(obs_data_t *settings, obs_source_t *context)
 {
     auto *f = new AnimeGanFilter;
     f->context = context;
+    proc_handler_add(obs_source_get_proc_handler(context),
+        "void sight_sketch_capture_stats_v1(out int captures, out int completed, out int skipped)",
+        capture_stats_proc, f);
     f->detail_size = validated_detail_size(obs_data_get_int(settings, DETAIL_SIZE));
     const char *path = obs_data_get_string(settings, MODEL_PATH);
     if (path && *path) {
         f->requested_path = path;
+        f->backend_status.request(path);
         f->load_requested = true;
         ++f->model_generation;
     }
@@ -246,10 +282,13 @@ void update(void *data, obs_data_t *settings)
             // generation will be discarded. Request a new load, rather than
             // leaving the filter with no ready model forever.
             f->requested_path = selected;
+            f->backend_status.request(selected);
             f->load_requested = true;
             f->model_ready = false;
         }
         f->frame_pending = false;
+        f->capture_in_flight = false;
+        f->backend_status.health={};
         ++f->model_generation;
         f->announced_first_frame = false;
         f->reset_output_texture = true;
@@ -322,6 +361,8 @@ obs_properties_t *properties(void *data)
         p, MODEL_PATH, "Portrait Sketch ONNX model",
         OBS_PATH_FILE, "ONNX model (*.onnx)",
         folder.empty() ? nullptr : folder.c_str());
+    sight_diagnostics::add<sight_diagnostics::Format::Onnx>(p,path);
+    sight_backend::add(p,static_cast<AnimeGanFilter *>(data));
     obs_property_set_long_description(path,
         "PortraitSketch emphasizes linework and simplifies colors. It can "
         "serve as sketch guidance or preprocessing for compatible ControlNet "
@@ -333,10 +374,12 @@ obs_properties_t *properties(void *data)
     obs_property_list_add_int(resolution, "Quick — 256 px", 256);
     obs_property_list_add_int(resolution, "Balanced — 512 px", 512);
     obs_property_list_add_int(resolution, "Detail — 768 px (slower)", 768);
+    obs_property_list_add_int(resolution, "Fine — 1024 px (much slower on CPU)", 1024);
     obs_property_set_long_description(resolution,
-        "Higher settings preserve more linework, but greatly increase CPU ONNX "
-        "inference time. This sketch model intentionally reduces colors and "
-        "fine textures; this control does not change the model's style.");
+        "Higher settings preserve more linework, but greatly increase ONNX "
+        "inference time and memory usage. The CPU runner uses a bounded number "
+        "of threads so OBS remains responsive. This sketch model intentionally "
+        "simplifies textures; higher detail does not change its style.");
     return p;
 }
 
@@ -364,8 +407,21 @@ void render(void *data, gs_effect_t *)
         f->output_texture = nullptr;
     }
     const auto [pw, ph] = capture_dimensions(width, height, f->detail_size.load());
-
-    if (f->model_ready) {
+    bool capture_due = false;
+    uint64_t capture_generation = 0;
+    {
+        std::lock_guard lock(f->input_mutex);
+        if (f->model_ready && !f->load_requested) {
+            if (f->capture_in_flight) {
+                ++f->skipped;
+            } else {
+                f->capture_in_flight = true;
+                capture_generation = f->model_generation;
+                capture_due = true;
+            }
+        }
+    }
+    if (capture_due) {
         if (!f->capture)
             f->capture = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
         if (!f->stage || f->stage_width != pw || f->stage_height != ph) {
@@ -404,16 +460,28 @@ void render(void *data, gs_effect_t *)
                                 std::memcpy(frame.data() + static_cast<size_t>(y) * pw * 4,
                                     pixels + static_cast<size_t>(y) * pitch, pw * 4);
                             std::lock_guard lock(f->input_mutex);
-                            f->input_rgba = std::move(frame);
-                            f->frame_width = pw;
-                            f->frame_height = ph;
-                            f->frame_pending = true;
-                            f->frame_cv.notify_one();
+                            if (capture_generation == f->model_generation &&
+                                f->model_ready && !f->load_requested) {
+                                f->input_rgba = std::move(frame);
+                                f->frame_width = pw;
+                                f->frame_height = ph;
+                                f->frame_pending = true;
+                                ++f->captures;
+                                f->frame_cv.notify_one();
+                                capture_due = false;
+                            }
                         }
                         gs_stagesurface_unmap(f->stage);
                     }
                 }
             }
+        }
+        // No frame was queued (graphics failure or a concurrent model change).
+        // Do not accidentally release a newer generation's capture claim.
+        if (capture_due) {
+            std::lock_guard lock(f->input_mutex);
+            if (capture_generation == f->model_generation)
+                f->capture_in_flight = false;
         }
     }
 

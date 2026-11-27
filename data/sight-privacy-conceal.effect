@@ -6,6 +6,7 @@ uniform texture2d privacy_mask;
 uniform texture2d privacy_text_mask;
 uniform float2 image_size;
 uniform float block_px;
+uniform int semantic_treatment;
 sampler_state linear_sample {Filter=Linear;AddressU=Clamp;AddressV=Clamp;};
 sampler_state point_sample {Filter=Point;AddressU=Clamp;AddressV=Clamp;};
 struct VSInput {float4 pos:POSITION;float2 uv:TEXCOORD0;};
@@ -19,6 +20,20 @@ float4 PSMain(VSOutput v_in):TARGET {
  if(privacy_text_mask.Sample(point_sample,v_in.uv).r>=0.5)
    return float4(0.0,0.0,0.0,original.a);
  if(privacy_mask.Sample(point_sample,v_in.uv).r<0.5)return original;
+ if(semantic_treatment==1)return float4(0.0,0.0,0.0,original.a);
+ if(semantic_treatment==2) {
+   float2 d=max(1.0,block_px)*0.45/max(float2(1.0,1.0),image_size);
+   float3 color=original.rgb*4.0;
+   color+=2.0*(image.Sample(linear_sample,v_in.uv+float2(d.x,0)).rgb+
+               image.Sample(linear_sample,v_in.uv-float2(d.x,0)).rgb+
+               image.Sample(linear_sample,v_in.uv+float2(0,d.y)).rgb+
+               image.Sample(linear_sample,v_in.uv-float2(0,d.y)).rgb);
+   color+=image.Sample(linear_sample,v_in.uv+d).rgb+
+          image.Sample(linear_sample,v_in.uv-d).rgb+
+          image.Sample(linear_sample,v_in.uv+float2(d.x,-d.y)).rgb+
+          image.Sample(linear_sample,v_in.uv+float2(-d.x,d.y)).rgb;
+   return float4(color/16.0,original.a);
+ }
  float2 blocks=max(float2(1.0,1.0),image_size/max(1.0,block_px));
  float2 cell=(floor(v_in.uv*blocks)+0.5)/blocks;
  // The spatially constant mosaic is a stronger concealment than a

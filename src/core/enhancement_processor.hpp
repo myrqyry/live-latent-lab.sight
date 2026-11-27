@@ -31,6 +31,8 @@ namespace lll {
          */
         bool load(const char* model_path, EnhanceModelType type, bool use_gpu = true);
         
+        const char* configured_provider() const {return provider_;}
+        const std::string& last_error() const {return last_error_;}
         bool is_ready() const { return ready_; }
         EnhanceModelType get_type() const { return type_; }
 
@@ -42,6 +44,8 @@ namespace lll {
         bool process(const uint8_t* rgb_in, int w, int h, uint8_t* rgb_out, int out_w, int out_h);
 
     private:
+        const char* provider_=nullptr;
+        std::string last_error_;
         bool ready_ = false;
         EnhanceModelType type_ = EnhanceModelType::ZeroDCE;
         

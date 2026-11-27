@@ -1,3 +1,5 @@
+#include "common/backend-status.hpp"
+#include "common/model-diagnostics.hpp"
 #include "common/preferences.hpp"
 #include <obs-module.h>
 #include <graphics/graphics.h>
@@ -86,6 +88,7 @@ struct DepthFilter {
     bool frame_pending = false;
     std::string requested_path;
     std::string active_path;
+    sight_backend::Status backend_status;
     uint64_t model_generation = 0;
     uint32_t frame_width = 0, frame_height = 0;
     uint32_t frame_source_width=0,frame_source_height=0;
@@ -184,6 +187,7 @@ void worker_main(DepthFilter *f)
                 if (generation != f->model_generation)
                     continue;
                 f->active_path = loaded ? model_path : std::string();
+                f->backend_status.complete(model_path,loaded,processor.configured_provider(),processor.last_error());
                 f->model_ready = loaded;
                 f->wants_frame = loaded;
             }
@@ -217,6 +221,7 @@ void worker_main(DepthFilter *f)
                  w, h, processor.last_error().c_str());
             std::lock_guard lock(f->input_mutex);
             if (f->model_ready && generation == f->model_generation) {
+                f->backend_status.health.record(false,inference_ms,Clock::now());
                 std::lock_guard out_lock(f->output_mutex);
                 f->output_sequence=0;
                 f->wants_frame = true;
@@ -267,6 +272,7 @@ void worker_main(DepthFilter *f)
             f->output_sequence=++depth_sequence;
             f->new_output = true;
             f->last_successful_ms = monotonic_milliseconds();
+            f->backend_status.health.record(true,inference_ms,Clock::now());
             accumulated_inference_ms += inference_ms;
             ++measured_frames;
             if (measured_frames == 8 && accumulated_inference_ms > 0) {
@@ -332,6 +338,7 @@ void *create(obs_data_t *settings, obs_source_t *context)
     const char *path = obs_data_get_string(settings, MODEL_PATH);
     if (path && *path) {
         f->requested_path = path;
+        f->backend_status.request(path);
         f->load_requested = true;
         ++f->model_generation;
     }
@@ -394,6 +401,7 @@ void update(void *data, obs_data_t *settings)
         f->edge = edge;
         if (reload || !f->model_ready) {
             f->requested_path = selected;
+            f->backend_status.request(selected);
             f->load_requested = true;
             f->model_ready = false;
             f->wants_frame = false;
@@ -403,6 +411,7 @@ void update(void *data, obs_data_t *settings)
             f->wants_frame = true;
         }
         f->frame_pending = false;
+        f->backend_status.health={};
         ++f->model_generation;
         f->next_capture = 0;
         f->announced_first_frame = false;
@@ -484,6 +493,8 @@ obs_properties_t *properties(void *data)
         p, MODEL_PATH, "Depth Anything V2 ONNX model",
         OBS_PATH_FILE, "ONNX model (*.onnx)",
         folder.empty() ? nullptr : folder.c_str());
+    sight_diagnostics::add<sight_diagnostics::Format::Onnx>(p,path);
+    sight_backend::add(p,static_cast<DepthFilter *>(data));
     obs_property_set_long_description(path,
         "Tested: depth_anything_v2_small_fp32.onnx (float32, NCHW). "
         "Depth is relative, not measured distance. Without a valid model "

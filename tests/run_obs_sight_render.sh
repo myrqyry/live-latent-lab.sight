@@ -10,6 +10,11 @@ if grep -Eq 'No vertex shader specified|missing vertex shader|Error compiling sh
     echo 'FAIL: OBS graphics or ONNX reported a real inference/draw error' >&2
     exit 1
 fi
+if [[ -n "${SIGHT_SMOKE_SEMANTIC_MODEL:-}" && -z "${SIGHT_SMOKE_SEMANTIC_EXPECT_SLATE:-}" ]] &&
+    ! grep -Eq 'SIGHT_SEMANTIC_REAL_V1 regions=[1-9][0-9]*' "$log"; then
+    echo 'FAIL: real semantic detector did not produce positive regions' >&2
+    exit 1
+fi
 if [[ -n "${SIGHT_SMOKE_DEPTH_REJECT_STALE:-}" ]] &&
     ! grep -Fq '[Sight/Depth] Change-aware history blending active' "$log"; then
     echo 'FAIL: Depth change-aware blending branch never executed' >&2
@@ -70,6 +75,11 @@ if ! grep -Fq 'ACTIVE_SKETCH_CUTOUT_DEPTH_TASKS_SIGNALS_HAND_TOUCH_EVENTS_202610
     echo 'FAIL: plugin identity marker absent (wrong binary loaded)' >&2
     exit 1
 fi
+case "${SIGHT_SMOKE_EXPECT_ONNX_DEVICE:-}" in
+    cuda) grep -Fq 'SIGHT_ONNX_CUDA_4BE7: CUDA session ready' "$log" || exit 1 ;;
+    cpu) grep -Fq '[Sight/ONNX] CPU session ready' "$log" &&
+         ! grep -Fq 'SIGHT_ONNX_CUDA_4BE7: CUDA session ready' "$log" || exit 1 ;;
+esac
 if [[ -n "${SIGHT_SMOKE_REFINE_EDGES:-}" ]] &&
     ! grep -Fq 'SIGHT_EDGE_MATTE_REFINEMENT_20261117' "$log"; then
     echo 'FAIL: real Subject Cutout refinement branch never executed' >&2

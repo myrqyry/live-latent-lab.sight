@@ -76,3 +76,12 @@ superpowers/
 *.tflite
 *.task
 *.gguf
+
+# User-acquired model and SDK files are never source-release inputs.
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.moc3
+*.model3.json
+*.motion3.json

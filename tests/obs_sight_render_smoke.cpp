@@ -23,6 +23,18 @@
 #include <thread>
 #include <mutex>
 #include <vector>
+#ifdef SIGHT_HAVE_OCR_EDITOR
+#include <QApplication>
+#include <QDialog>
+#include <QLabel>
+#include <QComboBox>
+#include <QSpinBox>
+#include <QTimer>
+#include <QMouseEvent>
+#include <QDialogButtonBox>
+#include <QPushButton>
+#include <memory>
+#endif
 
 namespace {
 // Isolated OBS smoke has no Qt frontend. Supply a real queued UI task
@@ -271,6 +283,11 @@ int main(int argc, char **argv)
         std::cerr << "usage: sight_obs_smoke /path/to/plugin.so /path/to/animegan.onnx /path/to/data\n";
         return 2;
     }
+#ifdef SIGHT_HAVE_OCR_EDITOR
+    int qt_argc=1;char* qt_argv[]={argv[0],nullptr};
+    std::unique_ptr<QApplication> qt_app;
+    if(std::getenv("SIGHT_SMOKE_OCR_EDITOR"))qt_app=std::make_unique<QApplication>(qt_argc,qt_argv);
+#endif
     if (const char *env = std::getenv("SIGHT_SMOKE_WIDTH"))
         W = static_cast<uint32_t>(std::strtoul(env, nullptr, 10));
     if (const char *env = std::getenv("SIGHT_SMOKE_HEIGHT"))
@@ -444,6 +461,25 @@ int main(int argc, char **argv)
         return 1;
     }
     std::cout << "default_model_folder=" << starting_folder << "\n";
+    if (std::strcmp(selected_filter, "neural_enhance_filter") == 0) {
+        const char *requested = std::getenv("SIGHT_SMOKE_SKETCH_SIZE");
+        if (requested && std::strtoul(requested, nullptr, 10) == 1024) {
+            obs_property_t *detail = obs_properties_get(unconfigured, "detail_size");
+            bool found = false;
+            if (detail) {
+                for (size_t index = 0; index < obs_property_list_item_count(detail); ++index) {
+                    if (obs_property_list_item_int(detail, index) == 1024)
+                        found = true;
+                }
+            }
+            if (!found) {
+                std::cerr << "FAIL: Portrait Sketch does not expose 1024 px inference detail\n";
+                obs_properties_destroy(unconfigured);
+                obs_shutdown();
+                return 1;
+            }
+        }
+    }
     obs_properties_destroy(unconfigured);
 
     obs_register_source(&pattern_info);
@@ -498,6 +534,14 @@ int main(int argc, char **argv)
     }
     obs_data_t *settings = obs_data_create();
     obs_data_set_string(settings, "model_path", argv[2]);
+    if(const char*family=std::getenv("SIGHT_SMOKE_CUTOUT_MODEL"))
+        obs_data_set_int(settings,"cutout_model_family",std::atoi(family));
+    if(const char*device=std::getenv("SIGHT_SMOKE_CUTOUT_DEVICE"))
+        obs_data_set_int(settings,"cutout_device",std::atoi(device));
+    if(const char*flow=std::getenv("SIGHT_SMOKE_CUTOUT_FLOW")){
+        obs_data_set_string(settings,"cutout_flow_model",flow);
+        obs_data_set_double(settings,"matte_retention",.6);
+    }
     if (std::getenv("SIGHT_SMOKE_REFINE_EDGES"))
         obs_data_set_bool(settings, "refine_edges", true);
     if (std::getenv("SIGHT_SMOKE_MATTE_CONTROLS")) {
@@ -515,6 +559,18 @@ int main(int argc, char **argv)
     }
     if(privacy_v2) {
         obs_data_set_int(settings,"privacy_cadence",1);
+        if(const char* model=std::getenv("SIGHT_SMOKE_SEMANTIC_MODEL")) {
+            obs_data_set_bool(settings,"semantic_enabled",true);
+            obs_data_set_string(settings,"semantic_model",model);
+            obs_data_set_int(settings,"semantic_class_count",0);
+            obs_data_set_string(settings,"semantic_classes","1");
+            obs_data_set_double(settings,"semantic_confidence",.99);
+            obs_data_set_string(settings,"semantic_thresholds","1:0.20");
+            obs_data_set_int(settings,"semantic_hold_ms",180);
+            if(std::getenv("SIGHT_SMOKE_SEMANTIC_BUFFERED"))
+                obs_data_set_bool(settings,"semantic_buffered",true);
+            obs_data_set_int(settings,"privacy_edge",512);
+        }
         if(const char* zones=std::getenv("SIGHT_SMOKE_PRIVACY_TEXT_ZONES"))
             obs_data_set_string(settings,"privacy_text_zones",zones);
     }
@@ -592,6 +648,14 @@ int main(int argc, char **argv)
     }
     auto *configured = obs_source_properties(filter);
     auto *configured_picker = configured ? obs_properties_get(configured,tracking_key("model_path").c_str()) : nullptr;
+    if(std::getenv("SIGHT_SMOKE_CUTOUT_MODEL")){
+        auto*family=configured?obs_properties_get(configured,"cutout_model_family"):nullptr;
+        if(!family||obs_property_list_item_count(family)!=3){
+            std::cerr<<"FAIL: Subject Cutout model family selector missing\n";
+            if(configured)obs_properties_destroy(configured);
+            obs_source_release(filter);obs_source_release(source);obs_shutdown();return 1;
+        }
+    }
     const char *configured_folder = configured_picker
         ? obs_property_path_default_path(configured_picker) : nullptr;
     const auto expected = std::filesystem::absolute(std::filesystem::path(argv[2]).parent_path());
@@ -622,7 +686,12 @@ int main(int argc, char **argv)
             && std::abs(obs_data_get_double(current_settings,"matte_gamma")-(controls?1.5:1.))<.001
             && std::abs(obs_data_get_double(current_settings,"matte_low")-(controls?.1:0.))<.001
             && std::abs(obs_data_get_double(current_settings,"matte_high")-(controls?.9:1.))<.001
-            && std::abs(obs_data_get_double(current_settings,"matte_retention")-(controls?.4:0.))<.001;
+            && std::abs(obs_data_get_double(current_settings,"matte_retention")-(controls?.4:std::getenv("SIGHT_SMOKE_CUTOUT_FLOW")?.6:0.))<.001;
+        if(std::getenv("SIGHT_SMOKE_CUTOUT_FLOW")){
+            auto*flow=obs_properties_get(configured,"cutout_flow_model");
+            valid_matte_controls=valid_matte_controls&&flow&&obs_property_visible(flow)&&
+                obs_property_get_type(flow)==OBS_PROPERTY_PATH;
+        }
         obs_data_release(current_settings);
         if (!valid_matte_controls || !toggle || obs_property_get_type(toggle) != OBS_PROPERTY_BOOL ||
             enabled != (std::getenv("SIGHT_SMOKE_REFINE_EDGES") != nullptr)) {
@@ -1642,6 +1711,300 @@ int main(int argc, char **argv)
             });
             source_file(orig);recovered=wait(measure);
         }
+        std::string output,region;
+        auto read_output=[&](int age){
+            calldata_t args;calldata_init(&args);calldata_set_int(&args,"max_age_ms",age);
+            bool available=false;
+            bool called=proc_handler_call(obs_source_get_proc_handler(filter),"sight_ocr_output_v1",&args);
+            calldata_get_bool(&args,"available",&available);
+            const char* text=calldata_string(&args,"text"),*name=calldata_string(&args,"region");
+            output=text?text:"";region=name?name:"";calldata_free(&args);
+            return called&&available;
+        };
+        bool private_default=!read_output(2000)&&output.empty();
+        obs_source_t* destination=nullptr;
+        if(const char* module=std::getenv("SIGHT_SMOKE_OCR_TEXT_MODULE")){
+            const char* data=std::getenv("SIGHT_SMOKE_OCR_TEXT_DATA");
+            obs_module_t* mod=nullptr;
+            if(!data||obs_open_module(&mod,module,data)!=MODULE_SUCCESS||!obs_init_module(mod))return 1;
+            auto* settings=obs_data_create();obs_data_set_string(settings,"text","Initial");
+            destination=obs_source_create("text_ft2_source","OCR routing fixture",settings,nullptr);obs_data_release(settings);
+            if(!destination)return 1;
+        }
+        auto destination_text=[&](){
+            if(!destination)return std::string{};
+            auto* settings=obs_source_get_settings(destination);
+            std::string text=obs_data_get_string(settings,"text");obs_data_release(settings);return text;
+        };
+        auto configure_output=[&](int view,bool enabled,int y,int h){
+            auto* cfg=obs_data_create();
+            obs_data_set_int(cfg,"ocr_view",view);obs_data_set_bool(cfg,"ocr_export",enabled);
+            obs_data_set_int(cfg,"ocr_x",0);obs_data_set_int(cfg,"ocr_y",y);
+            obs_data_set_int(cfg,"ocr_w",100);obs_data_set_int(cfg,"ocr_h",h);
+            obs_data_set_int(cfg,"ocr_stable",2);obs_data_set_bool(cfg,"ocr_change_only",true);
+            obs_data_set_string(cfg,"ocr_region_name","Score");
+            obs_data_set_string(cfg,"ocr_format","{region}: {text}");
+            if(destination)obs_data_set_string(cfg,"ocr_target_uuid",obs_source_get_uuid(destination));
+            obs_source_update(filter,cfg);obs_data_release(cfg);
+        };
+        configure_output(3,true,50,50);
+        bool not_immediate=!read_output(2000);
+        bool cropped=wait([&](){
+            return current==baseline&&read_output(2000)&&output=="CODE 12345"&&region=="Score"&&
+                read_text(2000)&&snapshot.count==1&&snapshot.lines[0].y0>.45f&&
+                (!destination||destination_text()=="Score: CODE 12345");
+        });
+        auto stats=[&](){
+            calldata_t args;calldata_init(&args);
+            long long runs=0,hits=0;
+            proc_handler_call(obs_source_get_proc_handler(filter),"sight_ocr_stats_v1",&args);
+            calldata_get_int(&args,"recognitions",&runs);calldata_get_int(&args,"cache_hits",&hits);
+            calldata_free(&args);return std::pair{runs,hits};
+        };
+        auto before=stats();
+        bool reused=wait([&](){auto now=stats();return now.second>=before.second+2&&now.first==before.first&&read_output(2000)&&output=="CODE 12345";});
+        // Real router target receives normalized OCR numeric input.
+        auto* ns=obs_data_create();obs_data_set_double(ns,"gain",10);
+        auto* numeric=obs_source_create("sight_smoke_controlled_filter","OCR numeric target",ns,nullptr);obs_data_release(ns);
+        if(!numeric)return 1;
+        obs_source_filter_add(source,numeric);
+        auto* rs=obs_data_create();obs_data_set_int(rs,"input_mode",2);
+        obs_data_set_string(rs,"ocr_input_filter",obs_source_get_name(filter));
+        obs_data_set_double(rs,"ocr_input_min",0);obs_data_set_double(rs,"ocr_input_max",20000);
+        obs_data_set_string(rs,"target_filter","OCR numeric target");obs_data_set_string(rs,"target_setting","gain");
+        obs_data_set_double(rs,"output_min",0);obs_data_set_double(rs,"output_max",100);
+        auto* router=obs_source_create("sight_value_router_filter","OCR value router",rs,nullptr);obs_data_release(rs);
+        if(!router)return 1;
+        obs_source_filter_add(source,router);
+        obs_source_inc_showing(source);obs_set_output_source(0,source);
+        auto gain=[&](){auto* cfg=obs_source_get_settings(numeric);double v=obs_data_get_double(cfg,"gain");obs_data_release(cfg);return v;};
+        bool numeric_routed=wait([&](){return std::abs(gain()-61.725)<.01;});
+        auto read_slot=[&](int slot,std::string& value,std::string& name,long long& seq){
+            calldata_t args;calldata_init(&args);
+            calldata_set_int(&args,"max_age_ms",2000);calldata_set_int(&args,"slot",slot);
+            bool available=false;
+            bool called=proc_handler_call(obs_source_get_proc_handler(filter),"sight_ocr_region_v1",&args);
+            if(called){
+                calldata_get_bool(&args,"available",&available);
+                auto* text=calldata_string(&args,"text");auto* region=calldata_string(&args,"region");
+                value=text?text:"";name=region?region:"";calldata_get_int(&args,"sequence",&seq);
+            }
+            calldata_free(&args);return called&&available;
+        };
+        obs_source_t* second_destination=nullptr;
+        if(destination){
+            auto* cfg=obs_data_create();obs_data_set_string(cfg,"text","Initial second");
+            second_destination=obs_source_create("text_ft2_source","OCR second routing fixture",cfg,nullptr);obs_data_release(cfg);
+            if(!second_destination)return 1;
+        }
+        auto second_text=[&](){
+            if(!second_destination)return std::string{};
+            auto* cfg=obs_source_get_settings(second_destination);
+            std::string text=obs_data_get_string(cfg,"text");obs_data_release(cfg);return text;
+        };
+        auto* extra=obs_data_create();
+        if(second_destination)obs_data_set_string(extra,"ocr_r2_target_uuid",obs_source_get_uuid(second_destination));
+        obs_data_set_string(extra,"ocr_r2_format","{region}: {text}");
+        obs_data_set_bool(extra,"ocr_r2_enabled",true);
+        obs_data_set_string(extra,"ocr_r2_name","Title");
+        obs_data_set_int(extra,"ocr_r2_x",0);obs_data_set_int(extra,"ocr_r2_y",0);
+        obs_data_set_int(extra,"ocr_r2_w",100);obs_data_set_int(extra,"ocr_r2_h",50);
+        obs_data_set_int(extra,"ocr_r2_layout",6);
+        obs_data_set_int(extra,"ocr_r2_stable",2);
+        obs_data_set_bool(extra,"ocr_r2_export",true);
+        obs_data_set_bool(extra,"ocr_r2_change_only",true);
+        obs_source_update(filter,extra);obs_data_release(extra);
+        std::string v1,v2,n1,n2;long long seq1=0,seq2=0;
+        bool multi=wait([&](){
+            return current==baseline&&read_slot(1,v1,n1,seq1)&&read_slot(2,v2,n2,seq2)&&
+                v1=="CODE 12345"&&v2=="SIGHT TEST"&&n1=="Score"&&n2=="Title"&&
+                seq1==seq2&&read_text(2000)&&snapshot.count==2&&
+                (!second_destination||(second_text()=="Title: SIGHT TEST"&&destination_text()=="Score: CODE 12345"));
+        });
+        // Both regions must retain independent caches over identical frames.
+        auto multi_stats=stats();
+        bool multi_reuse=wait([&](){
+            auto now=stats();return now.second>=multi_stats.second+4&&now.first==multi_stats.first;
+        });
+        bool duplicate_safe=true;
+        if(second_destination){
+            extra=obs_data_create();
+            obs_data_set_string(extra,"ocr_r2_target_uuid",obs_source_get_uuid(destination));
+            obs_source_update(filter,extra);obs_data_release(extra);
+            auto* manual=obs_data_create();obs_data_set_string(manual,"text","manual");
+            obs_source_update(destination,manual);obs_data_release(manual);
+            bool active=wait([&](){return read_slot(1,v1,n1,seq1)&&read_slot(2,v2,n2,seq2)&&destination_text()=="manual";});
+            for(int i=0;i<12;++i){
+                duplicate_safe=duplicate_safe&&render_image(source,current)&&destination_text()=="manual";
+                std::this_thread::sleep_for(std::chrono::milliseconds(45));
+            }
+            duplicate_safe=duplicate_safe&&active;
+            extra=obs_data_create();obs_data_set_string(extra,"ocr_r2_target_uuid",obs_source_get_uuid(second_destination));
+            obs_source_update(filter,extra);obs_data_release(extra);
+            duplicate_safe=duplicate_safe&&wait([&](){return destination_text()=="Score: CODE 12345"&&second_text()=="Title: SIGHT TEST";});
+        }
+        bool invalid_slot=!read_slot(0,v1,n1,seq1)&&!read_slot(5,v1,n1,seq1)&&!read_slot(3,v1,n1,seq1);
+        auto* slot=obs_data_create();obs_data_set_int(slot,"ocr_input_slot",2);
+        obs_data_set_int(slot,"ocr_input_kind",2);obs_data_set_string(slot,"ocr_input_query","SIGHT TEST");
+        obs_source_update(router,slot);obs_data_release(slot);
+        bool slot_routed=wait([&](){return std::abs(gain()-100)<.01;});
+        extra=obs_data_create();obs_data_set_bool(extra,"ocr_r2_export",false);
+        obs_source_update(filter,extra);obs_data_release(extra);
+        bool slot_private=wait([&](){return !read_slot(2,v2,n2,seq2)&&read_slot(1,v1,n1,seq1)&&
+            v1=="CODE 12345"&&std::abs(gain()-10)<.01;});
+        configure_output(0,false,50,50);
+        bool multi_mask=wait([&](){return measure()&&read_text(2000)&&snapshot.count==2&&!read_slot(2,v2,n2,seq2);});
+        configure_output(3,true,50,50);
+        extra=obs_data_create();obs_data_set_bool(extra,"ocr_r2_enabled",false);
+        obs_source_update(filter,extra);obs_data_release(extra);
+        bool removed_slot=wait([&](){return !read_slot(2,v2,n2,seq2)&&read_text(2000)&&snapshot.count==1;});
+        slot=obs_data_create();obs_data_set_int(slot,"ocr_input_slot",1);
+        obs_source_update(router,slot);obs_data_release(slot);
+        if(second_destination){obs_source_release(second_destination);smoke_drain_ui();}
+        bool multi_ok=multi&&multi_reuse&&duplicate_safe&&multi_mask&&invalid_slot&&slot_routed&&slot_private&&removed_slot;
+        std::cout<<"SIGHT_OCR_MULTI_REAL multi="<<multi<<" invalid="<<invalid_slot
+            <<" routed="<<slot_routed<<" private="<<slot_private<<" removed="<<removed_slot
+            <<" reuse="<<multi_reuse<<" duplicate_safe="<<duplicate_safe<<" mask="<<multi_mask
+            <<" PASS="<<multi_ok<<std::endl;
+
+        auto match=[&](int kind,const char* query){
+            auto* cfg=obs_data_create();obs_data_set_int(cfg,"ocr_input_kind",kind);
+            obs_data_set_string(cfg,"ocr_input_query",query);obs_source_update(router,cfg);obs_data_release(cfg);
+        };
+        match(1,"CODE");bool match_routed=wait([&](){return std::abs(gain()-100)<.01;});
+        match(2,"CODE");bool no_match=wait([&](){return std::abs(gain())<.01;});
+        configure_output(0,true,50,50);
+        bool concealment_private=wait([&](){return !read_output(2000)&&output.empty()&&current!=baseline;});
+        bool router_released=wait([&](){return std::abs(gain()-10)<.01;});
+        obs_set_output_source(0,nullptr);obs_source_dec_showing(source);
+        smoke_drain_ui();obs_source_filter_remove(source,router);obs_source_release(router);
+        smoke_drain_ui();obs_source_filter_remove(source,numeric);obs_source_release(numeric);
+        configure_output(3,true,0,50);
+        bool upper=wait([&](){return read_output(2000)&&output=="SIGHT TEST"&&
+            (!destination||destination_text()=="Score: SIGHT TEST");});
+        source_file(blank);
+        bool empty_output=wait([&](){return read_output(2000)&&output.empty()&&
+            (!destination||destination_text().empty());});
+        source_file(orig);
+        bool returned=wait([&](){return read_output(2000)&&output=="SIGHT TEST";});
+        obs_source_set_enabled(filter,false);
+        bool disabled_output=!read_output(2000)&&output.empty();
+        obs_source_set_enabled(filter,true);
+        configure_output(3,false,0,100);
+        bool opt_out=wait([&](){return !read_output(2000)&&output.empty()&&current==baseline;});
+        configure_output(4,false,0,100);
+        auto* prep=obs_data_create();obs_data_set_int(prep,"ocr_preprocessing",1);
+        obs_source_update(filter,prep);obs_data_release(prep);
+        bool preview=wait([&](){
+            size_t correct=0;
+            for(size_t i=0;i<current.size();i+=4)
+                correct+=std::abs(int(current[i])-(255-int(baseline[i])))<=1&&
+                    current[i]==current[i+1]&&current[i]==current[i+2];
+            return correct>W*H*99/100&&!read_output(2000);
+        });
+        prep=obs_data_create();obs_data_set_int(prep,"ocr_preprocessing",0);
+        obs_source_update(filter,prep);obs_data_release(prep);
+        configure_output(0,false,0,100);
+        bool original_mask=wait(measure);
+        bool editor_ok=true;
+#ifdef SIGHT_HAVE_OCR_EDITOR
+        if(qt_app){
+            auto* props=obs_source_properties(filter);
+            auto* button=obs_properties_get(props,"ocr_visual_editor");
+            bool button_ok=button!=nullptr;
+            bool snapshot_seen=false,pixels_seen=false,drag_ok=false,second_ok=false,cancel_ok=false,applied=false;
+            auto interact=[&](bool accept){
+                QTimer timer;timer.setInterval(75);
+                int attempts=0;bool interacted=false;
+                QObject::connect(&timer,&QTimer::timeout,[&](){
+                    smoke_drain_ui();
+                    auto* dialog=qobject_cast<QDialog*>(QApplication::activeModalWidget());
+                    if(!dialog||dialog->objectName()!="sightOcrRegionEditor")return;
+                    auto* status=dialog->findChild<QLabel*>("sightOcrStatus");
+                    if(!status||!status->text().contains("Frozen source snapshot")){
+                        if(++attempts>100)dialog->reject();
+                        else render_image(source,current);
+                        return;
+                    }
+                    snapshot_seen=true;
+                    auto* canvas=dialog->findChild<QWidget*>("sightOcrCanvas");
+                    auto* slots_box=dialog->findChild<QComboBox*>("sightOcrSlot");
+                    if(!canvas||!slots_box){dialog->reject();return;}
+                    const double scale=std::min(double(canvas->width())/W,double(canvas->height())/H);
+                    const double fw=W*scale,fh=H*scale,l=(canvas->width()-fw)/2,t=(canvas->height()-fh)/2;
+                    // Inspect rendered canvas pixels away from labels and
+                    // borders. Match known source fixture dark/bright areas.
+                    auto image=canvas->grab().toImage();
+                    size_t dark=0,bright=0,dark_match=0,bright_match=0;
+                    const double dpr=image.devicePixelRatio();
+                    for(unsigned sy=H/8;sy<H*7/8;sy+=2)for(unsigned sx=W/8;sx<W*7/8;sx+=2){
+                        auto index=(size_t(sy)*W+sx)*4;
+                        auto color=image.pixelColor(int((l+fw*(sx+.5)/W)*dpr),int((t+fh*(sy+.5)/H)*dpr));
+                        int gray=qGray(color.rgb());
+                        if(baseline[index]<16){++dark;dark_match+=gray<110;}
+                        if(baseline[index]>245){++bright;bright_match+=gray>150;}
+                    }
+                    pixels_seen=dark>50&&bright>50&&dark_match*100>dark*60&&bright_match*100>bright*85;
+                    auto drag=[&](int slot,double x,double y,double w,double h){
+                        slots_box->setCurrentIndex(slot);
+                        QPointF p(l+x*fw,t+y*fh),q(l+(x+w)*fw,t+(y+h)*fh);
+                        QMouseEvent press(QEvent::MouseButtonPress,p,canvas->mapToGlobal(p.toPoint()),Qt::LeftButton,Qt::LeftButton,Qt::NoModifier);
+                        QApplication::sendEvent(canvas,&press);
+                        QMouseEvent release(QEvent::MouseButtonRelease,q,canvas->mapToGlobal(q.toPoint()),Qt::LeftButton,Qt::NoButton,Qt::NoModifier);
+                        QApplication::sendEvent(canvas,&release);
+                        const int expected[]={int(x*100+.5),int(y*100+.5),int(w*100+.5),int(h*100+.5)};
+                        for(int i=0;i<4;++i){
+                            auto* spin=dialog->findChild<QSpinBox*>(QString("sightOcrCoord%1").arg(i));
+                            if(!spin||spin->value()!=expected[i])return false;
+                        }
+                        return true;
+                    };
+                    drag_ok=drag(0,0,.5,1,.5);second_ok=drag(1,0,0,1,.5);
+                    interacted=true;timer.stop();
+                    auto* buttons=dialog->findChild<QDialogButtonBox*>();
+                    if(buttons&&accept)buttons->button(QDialogButtonBox::Ok)->click();
+                    else dialog->reject();
+                });
+                timer.start();
+                const bool changed=button&&obs_property_button_clicked(button,filter);
+                timer.stop();return interacted&&changed==accept;
+            };
+            // Run against the real source capture in the modal loop.
+            if(button_ok){
+                cancel_ok=interact(false);
+                auto* cfg=obs_source_get_settings(filter);
+                cancel_ok=cancel_ok&&obs_data_get_int(cfg,"ocr_y")==0&&obs_data_get_int(cfg,"ocr_h")==100&&
+                    !obs_data_get_bool(cfg,"ocr_r2_enabled");obs_data_release(cfg);
+                applied=interact(true);
+                cfg=obs_source_get_settings(filter);
+                applied=applied&&obs_data_get_int(cfg,"ocr_y")==50&&obs_data_get_int(cfg,"ocr_h")==50&&
+                    obs_data_get_bool(cfg,"ocr_r2_enabled")&&obs_data_get_int(cfg,"ocr_r2_y")==0&&
+                    obs_data_get_int(cfg,"ocr_r2_h")==50&&!obs_data_get_bool(cfg,"ocr_r2_export");
+                obs_data_release(cfg);
+            }
+            obs_properties_destroy(props);
+            bool mask_after=wait([&](){return measure()&&read_text(2000)&&snapshot.count==2;});
+            auto* restore=obs_data_create();obs_data_set_bool(restore,"ocr_r2_enabled",false);
+            obs_data_set_int(restore,"ocr_y",0);obs_data_set_int(restore,"ocr_h",100);
+            obs_source_update(filter,restore);obs_data_release(restore);
+            bool restored_editor=wait(measure);
+            editor_ok=button_ok&&snapshot_seen&&pixels_seen&&drag_ok&&second_ok&&cancel_ok&&applied&&mask_after&&restored_editor;
+            std::cout<<"SIGHT_OCR_EDITOR_REAL button="<<button_ok<<" snapshot="<<snapshot_seen<<" pixels="<<pixels_seen<<" drag="<<drag_ok
+                <<" second="<<second_ok<<" cancel="<<cancel_ok<<" applied="<<applied
+                <<" mask="<<mask_after<<" restored="<<restored_editor<<" PASS="<<editor_ok<<std::endl;
+        }
+#endif
+        bool processing_ok=editor_ok&&multi_ok&&reused&&numeric_routed&&match_routed&&no_match&&router_released&&preview;
+        std::cout<<"SIGHT_OCR_PROCESSING_REAL reused="<<reused<<" numeric="<<numeric_routed
+            <<" match="<<match_routed<<" no_match="<<no_match<<" released="<<router_released
+            <<" preview="<<preview<<" PASS="<<processing_ok<<std::endl;
+        if(destination){obs_source_release(destination);smoke_drain_ui();}
+        bool output_ok=private_default&&not_immediate&&cropped&&concealment_private&&upper&&empty_output&&returned&&disabled_output&&opt_out&&original_mask&&processing_ok;
+        std::cout<<"SIGHT_OCR_OUTPUT_REAL private="<<private_default<<" invalidated="<<not_immediate
+            <<" crop="<<cropped<<" concealment_private="<<concealment_private<<" upper="<<upper
+            <<" empty="<<empty_output<<" returned="<<returned<<" disabled="<<disabled_output
+            <<" opt_out="<<opt_out<<" mask_restored="<<original_mask<<" routed="<<(destination!=nullptr)
+            <<" PASS="<<output_ok<<std::endl;
         bool bridge_ok=true;
         if(const char* module=std::getenv("SIGHT_SMOKE_HYPERSHADER_MODULE")) {
             const char* data=std::getenv("SIGHT_SMOKE_HYPERSHADER_DATA");
@@ -1793,7 +2156,7 @@ int main(int argc, char **argv)
             <<" extra_black="<<black_n<<" outside="<<out_n<<"\n";
         obs_source_filter_remove(source,filter);obs_source_release(filter);
         obs_source_release(source);smoke_drain_ui();obs_shutdown();
-        return !(redacted&&mask&&mosaic&&geometry&&abi&&expired&&original&&cleared&&recovered&&unavailable&&bridge_ok);
+        return !(redacted&&mask&&mosaic&&geometry&&abi&&expired&&original&&cleared&&recovered&&unavailable&&bridge_ok&&output_ok);
     }
     obs_source_t* producer=nullptr;
     obs_source_t* numeric=nullptr;
@@ -1927,6 +2290,26 @@ int main(int argc, char **argv)
                              (!expect_passthrough && diff > required_diff))))
             break;
         std::this_thread::sleep_for(std::chrono::milliseconds(70));
+    }
+    if (std::getenv("SIGHT_SMOKE_CAPTURE_GATE")) {
+        calldata_t stats{};
+        const bool called = proc_handler_call(obs_source_get_proc_handler(filter),
+                                              "sight_sketch_capture_stats_v1", &stats);
+        const int64_t captures = calldata_int(&stats, "captures");
+        const int64_t completed = calldata_int(&stats, "completed");
+        const int64_t skipped = calldata_int(&stats, "skipped");
+        calldata_free(&stats);
+        std::cout << "SKETCH_CAPTURE_GATE captures=" << captures
+                  << " completed=" << completed << " skipped=" << skipped << "\n";
+        if (!called || captures < 1 || completed < 1 || skipped < 1 ||
+            captures > completed + 1) {
+            std::cerr << "FAIL: Portrait Sketch redundantly captured frames while inference was busy\n";
+            obs_source_filter_remove(source,filter);
+            obs_source_release(filter);
+            obs_source_release(source);
+            obs_shutdown();
+            return 1;
+        }
     }
     if(signal_receiver&&std::getenv("SIGHT_SMOKE_CONSUMER_DISCOVERY")){
         auto contains=[](obs_property_t* p,const char* key){
@@ -2385,6 +2768,22 @@ int main(int argc, char **argv)
                  <<" enabled="<<(std::getenv("SIGHT_SMOKE_HOLISTIC_OVERLAY")?1:0)
                  <<"\n";
     std::cout << "obs_render_diff=" << diff << "/" << baseline.size() << "\n";
+    if(!expect_passthrough && (std::strcmp(selected_filter,"sight_depth_filter")==0 ||
+        std::strcmp(selected_filter,"sight_u2net_filter")==0 ||
+        std::strcmp(selected_filter,"neural_enhance_filter")==0)){
+        auto* health=obs_source_properties(filter);
+        auto* label=health?obs_properties_get(health,"sight_inference_health"):nullptr;
+        std::string status=label?obs_property_description(label):"missing";
+        std::cout<<"SIGHT_HEALTH_REAL_OBS "<<status<<"\n";
+        bool ok=status.find("Recent inference")!=std::string::npos &&
+                status.find("Last inference:")!=std::string::npos &&
+                status.find("Successful:")!=std::string::npos;
+        if(health)obs_properties_destroy(health);
+        if(!ok){
+            obs_source_filter_remove(source,filter);obs_source_release(filter);
+            obs_source_release(source);obs_shutdown();return 1;
+        }
+    }
     if (std::strcmp(selected_filter, "sight_depth_filter") == 0) {
         uint8_t mn = 255, mx = 0;
         uint64_t channel_difference = 0;
@@ -2455,6 +2854,99 @@ int main(int argc, char **argv)
         }
     }
     if (std::strcmp(selected_filter, "sight_u2net_filter") == 0) {
+        if(const char*expected_flow=std::getenv("SIGHT_SMOKE_CUTOUT_FLOW_EXPECT")){
+            auto*props=obs_source_properties(filter);
+            auto*status=props?obs_properties_get(props,"sight_backend_status"):nullptr;
+            std::string desc=status?obs_property_description(status):"missing";
+            bool ok=desc.find("Loaded — ONNX Runtime")!=std::string::npos&&desc.find(expected_flow)!=std::string::npos;
+            std::cout<<"SIGHT_CUTOUT_FLOW_STATUS="<<ok<<" "<<desc<<"\n";
+            if(props)obs_properties_destroy(props);
+            if(!ok){obs_source_filter_remove(source,filter);obs_source_release(filter);obs_source_release(source);obs_shutdown();return 1;}
+        }
+        if(std::getenv("SIGHT_SMOKE_CUTOUT_SHARED")){
+            auto snap=std::make_unique<sight_matte_v1>();
+            snap->abi_version=SIGHT_MATTE_ABI_V1;snap->struct_size=sizeof(*snap);
+            auto read=[&](uint64_t known){
+                calldata_t args;calldata_init(&args);
+                calldata_set_ptr(&args,"snapshot",snap.get());
+                calldata_set_int(&args,"max_age_ms",5000);
+                calldata_set_int(&args,"known_sequence",known);
+                bool available=false;
+                bool called=proc_handler_call(obs_source_get_proc_handler(filter),"sight_matte_read_v1",&args);
+                bool returned=calldata_get_bool(&args,"available",&available);
+                calldata_free(&args);return called&&returned&&available;
+            };
+            bool available=false;
+            for(int i=0;i<40&&!available;++i){
+                available=read(0);
+                if(!available)std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
+            const unsigned expected_w=W>=H?320:std::max(1u,unsigned(uint64_t(W)*320/H));
+            const unsigned expected_h=H>=W?320:std::max(1u,unsigned(uint64_t(H)*320/W));
+            bool ok=available&&snap->sequence&&snap->width==expected_w&&snap->height==expected_h&&
+                snap->source_width==W&&snap->source_height==H;
+            if(ok){
+                const size_t n=size_t(snap->width)*snap->height;
+                auto [lo,hi]=std::minmax_element(snap->pixels,snap->pixels+n);
+                ok=*hi>*lo+20;
+            }
+            std::cout<<"SIGHT_CUTOUT_SHARED_ABI="<<ok<<" available="<<available<<" mask="<<snap->width<<"x"<<snap->height<<" source="<<snap->source_width<<"x"<<snap->source_height<<"\n";
+            if(!ok){obs_source_filter_remove(source,filter);obs_source_release(filter);obs_source_release(source);obs_shutdown();return 1;}
+            if(const char*moved=std::getenv("SIGHT_SMOKE_CUTOUT_FLOW_MOVE")){
+                auto center=[&](){
+                    double total=0,weighted=0;
+                    for(unsigned y=0;y<snap->height;++y)for(unsigned x=0;x<snap->width;++x){
+                        double a=snap->pixels[size_t(y)*snap->width+x];
+                        total+=a;weighted+=a*(x+.5)/snap->width;
+                    }
+                    return total>0?weighted/total:-1.;
+                };
+                auto flow_runs=[&](){
+                    auto*props=obs_source_properties(filter);
+                    auto*label=props?obs_properties_get(props,"sight_backend_status"):nullptr;
+                    std::string desc=label?obs_property_description(label):"";
+                    if(props)obs_properties_destroy(props);
+                    auto pos=desc.find("flow runs=");
+                    return pos==std::string::npos?0ull:std::strtoull(desc.c_str()+pos+10,nullptr,10);
+                };
+                const auto initial_runs=flow_runs();
+                const auto first=center();
+                const auto seq=snap->sequence;
+                auto change=[&](const char*path){
+                    auto*d=obs_data_create();obs_data_set_string(d,"file",path);
+                    obs_source_update(source,d);obs_data_release(d);
+                };
+                auto pump=[&](int count){
+                    for(int i=0;i<count;++i){
+                        if(!render_image(source,current))return false;
+                        std::this_thread::sleep_for(std::chrono::milliseconds(70));
+                    }
+                    return true;
+                };
+                auto flow_status=[&](const char*expected){
+                    auto*props=obs_source_properties(filter);
+                    auto*label=props?obs_properties_get(props,"sight_backend_status"):nullptr;
+                    const bool valid=label&&std::string(obs_property_description(label)).find(expected)!=std::string::npos;
+                    if(props)obs_properties_destroy(props);
+                    return valid;
+                };
+                change(moved);
+                bool motion_ok=pump(20)&&read(0)&&snap->sequence>seq&&center()>first+.02&&flow_runs()>initial_runs;
+                const double moved_center=center();
+                auto retention=[&](double val){
+                    auto*d=obs_data_create();obs_data_set_double(d,"matte_retention",val);
+                    obs_source_update(filter,d);obs_data_release(d);
+                };
+                retention(0);const auto before_off=flow_runs();
+                const bool off=pump(8)&&flow_status("Flow ready")&&flow_runs()==before_off;
+                retention(.6);const bool on=pump(12)&&flow_status("stationary stabilization")&&flow_runs()==before_off;
+                change(std::getenv("SIGHT_SMOKE_IMAGE_FILE"));
+                const bool restored=pump(20)&&read(0)&&std::abs(center()-first)<.015&&flow_runs()>before_off;
+                std::cout<<"SIGHT_FLOW_MOTION="<<motion_ok<<" OFF="<<off<<" ON="<<on<<" RESTORED="<<restored
+                    <<" center_before="<<first<<" center_moved="<<moved_center<<" center_restored="<<center()<<" flow_runs="<<flow_runs()<<"\n";
+                if(!(motion_ok&&off&&on&&restored)){obs_source_filter_remove(source,filter);obs_source_release(filter);obs_source_release(source);obs_shutdown();return 1;}
+            }
+        }
         uint8_t lo = 255, hi = 0;
         for (size_t i = 3; i < current.size(); i += 4) {
             lo = std::min(lo, current[i]);
@@ -2504,6 +2996,27 @@ int main(int argc, char **argv)
             obs_shutdown();
             return 1;
         }
+    }
+    if(privacy_v2 && std::getenv("SIGHT_SMOKE_SEMANTIC_EXPECT_SLATE")) {
+        size_t slate=0;
+        for(size_t i=0;i+3<current.size();i+=4)
+            slate+=current[i]==24&&current[i+1]==24&&current[i+2]==24&&current[i+3]==255;
+        std::cout<<"semantic_buffered_slate_pixels="<<slate<<"\n";
+        if(slate!=size_t(W)*H){std::cerr<<"FAIL: unapproved frame escaped buffered mode\n";return 1;}
+    }
+    if(privacy_v2 && std::getenv("SIGHT_SMOKE_SEMANTIC_MODEL") &&
+       std::getenv("SIGHT_SMOKE_PRIVACY_EXPECT_MASKED")) {
+        calldata_t args;calldata_init(&args);
+        bool available=false;
+        const bool called=proc_handler_call(obs_source_get_proc_handler(filter),"sight_semantic_read_v1",&args);
+        const bool returned=calldata_get_bool(&args,"available",&available);
+        const char* json=calldata_string(&args,"regions_json");
+        const bool ok=called&&returned&&available&&calldata_int(&args,"count")>0&&
+            calldata_int(&args,"source_width")==W&&calldata_int(&args,"source_height")==H&&
+            json&&std::strstr(json,"\"category\":1")&&std::strstr(json,"\"id\":");
+        std::cout<<"semantic_snapshot_valid="<<ok<<" regions="<<calldata_int(&args,"count")<<" json="<<(json?json:"")<<"\n";
+        calldata_free(&args);
+        if(!ok){std::cerr<<"FAIL: semantic snapshot absent or invalid\n";return 1;}
     }
     if(privacy_v2 && std::getenv("SIGHT_SMOKE_PRIVACY_EXPECT_MASKED")) {
         size_t visible=0,transformed=0,unchanged=0;
@@ -2654,7 +3167,31 @@ int main(int argc, char **argv)
             std::cerr << "FAIL: invalid expiry test hold\n";
             return 1;
         }
+        std::unique_ptr<obs_properties_t,decltype(&obs_properties_destroy)> health_owner(obs_source_properties(filter),obs_properties_destroy);
+        auto* health_props=health_owner.get();
+        auto* health_label=health_props?obs_properties_get(health_props,"sight_inference_health"):nullptr;
+        auto* refresh=health_props?obs_properties_get(health_props,"sight_backend_refresh"):nullptr;
+        auto health_text=[&](){
+            if(!health_label||!refresh||!obs_property_button_clicked(refresh,filter))return std::string("missing");
+            return std::string(obs_property_description(health_label));
+        };
+        bool rate_seen=false;
+        for(int trial=0;trial<60&&!rate_seen;++trial){
+            if(!render_image(source,current))break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(75));
+            rate_seen=health_text().find("Recent result rate:")!=std::string::npos;
+        }
+        const auto active_health=health_text();
         std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+        const auto quiet_health=health_text();
+        bool quiet_ok=quiet_health.find("No recent inference (source may be idle)")!=std::string::npos
+            &&quiet_health.find("Recent result rate:")==std::string::npos;
+        std::cout<<"SIGHT_HEALTH_ACTIVE "<<active_health<<"\n";
+        std::cout<<"SIGHT_HEALTH_QUIET "<<quiet_health<<"\n";
+        if(!rate_seen||(sleep_ms>=6500&&!quiet_ok)){
+            std::cerr<<"FAIL: inference health rate/quiet transition\n";
+            return 1;
+        }
         if (!render_image(source, current) || current.size() != baseline.size()) {
             std::cerr << "FAIL: expired depth readback failed\n";
             return 1;
@@ -2677,7 +3214,9 @@ int main(int argc, char **argv)
             recovered = fresh_diff > required_diff;
         }
         std::cout << "depth_expired_recovers_after_resume=" << recovered << "\n";
-        if (!recovered) {
+        const auto resumed_health=health_text();
+        std::cout<<"SIGHT_HEALTH_RESUMED "<<resumed_health<<"\n";
+        if (!recovered || resumed_health.find("Recent inference")==std::string::npos) {
             std::cerr << "FAIL: depth stayed in passthrough after inference resumed\n";
             return 1;
         }
@@ -2913,6 +3452,80 @@ int main(int argc, char **argv)
             smoke_drain_ui();
             obs_source_set_enabled(filter,true);
             if (!drawn || !opacity_zero || !absent) {
+                obs_source_filter_remove(source,filter); obs_source_release(filter);
+                obs_source_release(source); smoke_drain_ui(); obs_shutdown(); return 1;
+            }
+        }
+
+        if (const char* shader_path=std::getenv("SIGHT_SMOKE_DEFOCUS_EFFECT")) {
+            auto* settings=obs_data_create();
+            obs_data_set_string(settings,"shader_file",shader_path);
+            obs_data_set_bool(settings,"sight_use_tracking",true);
+            obs_data_set_double(settings,"param_blur_radius",24.0);
+            auto* defocus=obs_source_create("hypershader_filter","Sight defocus regression",settings,nullptr);
+            obs_data_release(settings);
+            if (!defocus) return 1;
+            obs_source_filter_add(source,defocus);
+            obs_source_inc_showing(source);
+            obs_set_output_source(0,source);
+
+            auto check=[&](bool active) {
+                for (int i=0;i<80;++i) {
+                    if (!render_image(source,painted) || painted.size()!=baseline.size()) return false;
+                    size_t foreground=0, foreground_changed=0, background_changed=0, changed=0;
+                    uint64_t original_edges=0, blurred_edges=0;
+                    bool alpha_ok=true;
+                    for (uint32_t y=0;y<H;++y) for (uint32_t x=0;x<W;++x) {
+                        const size_t p=(size_t(y)*W+x)*4;
+                        const size_t m=size_t(y*snap.height/H)*snap.width+x*snap.width/W;
+                        bool differs=false;
+                        for (int k=0;k<3;++k)
+                            differs|=std::abs(int(painted[p+k])-int(baseline[p+k]))>3;
+                        changed+=differs;
+                        alpha_ok&=std::abs(int(painted[p+3])-int(baseline[p+3]))<=1;
+                        if (snap.pixels[m]>=230) { ++foreground; foreground_changed+=differs; }
+                        else if (snap.pixels[m]<=12) {
+                            background_changed+=differs;
+                            if (x+1<W && snap.pixels[size_t(y*snap.height/H)*snap.width+
+                                                     (x+1)*snap.width/W]<=12) {
+                                for (int k=0;k<3;++k) {
+                                    original_edges+=std::abs(int(baseline[p+k])-int(baseline[p+4+k]));
+                                    blurred_edges+=std::abs(int(painted[p+k])-int(painted[p+4+k]));
+                                }
+                            }
+                        }
+                    }
+                    if (alpha_ok && (active ? foreground>100 && foreground_changed<foreground/20 &&
+                                             background_changed>W*H/100 && blurred_edges<original_edges
+                                             : changed==0)) return true;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(55));
+                }
+                return false;
+            };
+            auto radius=[&](double value) {
+                auto* update=obs_data_create();
+                obs_data_set_double(update,"param_blur_radius",value);
+                obs_source_update(defocus,update);
+                obs_data_release(update);
+            };
+            const bool active=check(true);
+            radius(0.0);
+            const bool zero=check(false);
+            radius(24.0);
+            const bool restored=check(true);
+            obs_source_set_enabled(filter,false);
+            const bool absent=check(false);
+            obs_source_set_enabled(filter,true);
+            const bool resumed=check(true);
+            blog(LOG_INFO,"SIGHT_DEFOCUS_D3F0 active=%d zero=%d restored=%d absent=%d resumed=%d",
+                 active,zero,restored,absent,resumed);
+            obs_set_output_source(0,nullptr);
+            obs_source_dec_showing(source);
+            smoke_drain_ui();
+            obs_source_filter_remove(source,defocus);
+            obs_source_release(defocus);
+            smoke_drain_ui();
+            if (!active || !zero || !restored || !absent || !resumed) {
                 obs_source_filter_remove(source,filter); obs_source_release(filter);
                 obs_source_release(source); smoke_drain_ui(); obs_shutdown(); return 1;
             }

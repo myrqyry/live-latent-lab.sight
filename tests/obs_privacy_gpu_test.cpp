@@ -7,7 +7,7 @@
 #include <vector>
 constexpr unsigned W=320,H=180;
 using Frame=std::vector<uint8_t>;
-Frame render(gs_effect_t*fx,gs_texture_t*input,gs_texture_t*mask,gs_texture_t*text_mask) {
+Frame render(gs_effect_t*fx,gs_texture_t*input,gs_texture_t*mask,gs_texture_t*text_mask,int treatment=0) {
  auto* dst=gs_texrender_create(GS_RGBA,GS_ZS_NONE);
  auto* stage=gs_stagesurface_create(W,H,GS_RGBA);
  Frame pixels;
@@ -21,6 +21,8 @@ Frame render(gs_effect_t*fx,gs_texture_t*input,gs_texture_t*mask,gs_texture_t*te
   vec2 resolution{};vec2_set(&resolution,float(W),float(H));
   gs_effect_set_vec2(gs_effect_get_param_by_name(fx,"image_size"),&resolution);
   gs_effect_set_float(gs_effect_get_param_by_name(fx,"block_px"),28.f);
+  auto* treatment_param=gs_effect_get_param_by_name(fx,"semantic_treatment");
+  if(treatment_param)gs_effect_set_int(treatment_param,treatment);
   while(gs_effect_loop(fx,"Draw"))gs_draw_sprite(input,0,W,H);
   gs_matrix_pop();gs_projection_pop();gs_texrender_end(dst);
   gs_stage_texture(stage,gs_texrender_get_texture(dst));
@@ -71,6 +73,8 @@ int main(int argc,char**argv) {
   auto*text_mask=gs_texture_create(W,H,GS_R8,1,&text_pixels,0);
   if(input&&mask&&text_mask) {
    auto concealed=render(fx,input,mask,text_mask);
+   auto solid=render(fx,input,mask,text_mask,1);
+   auto blur=render(fx,input,mask,text_mask,2);
    std::vector<uint8_t> empty_mask(size_t(W)*H,0);
    const uint8_t*empty_pixels=empty_mask.data();
    auto passthrough_mask=gs_texture_create(W,H,GS_R8,1,&empty_pixels,0);
@@ -99,7 +103,17 @@ int main(int argc,char**argv) {
    std::cout<<"PRIVACY_GPU_OPAQUE_TEXT="<<solid_text<<" PRIVACY_GPU_CONCEALED_FACES="<<changed_faces
       <<" BACKGROUND_CHANGED="<<changed_background
       <<" ZERO_MASK_PASSTHROUGH="<<unchanged<<" OPAQUE="<<opaque<<"\n";
-   pass=changed_faces>12000 && changed_background==0 &&
+   size_t solid_pixels=0,blur_changed=0;bool other_background=true;
+   if(solid.size()==original.size()&&blur.size()==original.size())
+    for(size_t i=0;i<m.size();++i) {
+     if(m[i]) {
+       solid_pixels+=solid[4*i]==0&&solid[4*i+1]==0&&solid[4*i+2]==0;
+       blur_changed+=std::abs(int(blur[4*i])-int(original[4*i]))>2;
+     } else if(!text_m[i])for(int j=0;j<4;++j)
+       other_background&=std::abs(int(solid[4*i+j])-int(original[4*i+j]))<=2 &&
+                         std::abs(int(blur[4*i+j])-int(original[4*i+j]))<=2;
+    }
+   pass=solid_pixels>21000&&blur_changed>12000&&other_background&&changed_faces>12000 && changed_background==0 &&
         solid_text>=38*90-10 && unchanged && opaque;
   }
   if(text_mask)gs_texture_destroy(text_mask);

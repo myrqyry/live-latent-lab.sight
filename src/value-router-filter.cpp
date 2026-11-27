@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "core/value_modulation.hpp"
+#include "core/ocr_processing.hpp"
 #include "core/tracking_discovery.hpp"
 
 namespace {
@@ -49,6 +50,9 @@ struct Configuration {
     unsigned index=1,age_ms=750,hand_index=0;
     sight::HandGesture hand_gesture=sight::HandGesture::OpenPalm;
     std::string target_source,target_filter,target_setting;
+    std::string ocr_filter,ocr_query;
+    int ocr_kind=0,ocr_slot=1;
+    double ocr_min=0,ocr_max=100;
     double output_min=0,output_max=100;
     double max_rate=20;
     bool threshold_gate=false;
@@ -279,6 +283,10 @@ void destroy(void* data) {
 }
 void defaults(obs_data_t* s) {
     obs_data_set_default_int(s,MODE,0);
+    obs_data_set_default_int(s,"ocr_input_kind",0);
+    obs_data_set_default_int(s,"ocr_input_slot",1);
+    obs_data_set_default_double(s,"ocr_input_min",0);
+    obs_data_set_default_double(s,"ocr_input_max",100);
     obs_data_set_default_int(s,WAVE_TYPE,0);
     obs_data_set_default_double(s,FREQ,1);
     obs_data_set_default_double(s,AMP,1);
@@ -305,7 +313,13 @@ void defaults(obs_data_t* s) {
 void update(void* data,obs_data_t* s) {
     auto* f=static_cast<Filter*>(data);
     Configuration cfg;
-    cfg.mode=int(obs_data_get_int(s,MODE))==1?1:0;
+    cfg.mode=int(std::clamp<int64_t>(obs_data_get_int(s,MODE),0,2));
+    cfg.ocr_filter=obs_data_get_string(s,"ocr_input_filter");
+    cfg.ocr_query=obs_data_get_string(s,"ocr_input_query");
+    cfg.ocr_slot=int(std::clamp<int64_t>(obs_data_get_int(s,"ocr_input_slot"),1,4));
+    cfg.ocr_kind=int(std::clamp<int64_t>(obs_data_get_int(s,"ocr_input_kind"),0,2));
+    cfg.ocr_min=obs_data_get_double(s,"ocr_input_min");
+    cfg.ocr_max=obs_data_get_double(s,"ocr_input_max");
     cfg.wave.waveform=sight::Waveform(std::clamp<int64_t>(obs_data_get_int(s,WAVE_TYPE),0,10));
     cfg.wave.frequency=std::clamp(obs_data_get_double(s,FREQ),.01,10.);
     cfg.wave.amplitude=std::clamp(obs_data_get_double(s,AMP),0.,2.);
@@ -343,6 +357,37 @@ void update(void* data,obs_data_t* s) {
     }
     if(changed_target&&f->has_baseline)dispatch(f,{},true,revision);
 }
+// Explicit same-parent producer. Never resolve an arbitrary global
+// source or read text from a concealment-only filter.
+std::optional<double> read_ocr_value(Filter* f,const Configuration& c){
+    if(c.ocr_filter.empty()||c.ocr_filter.size()>256||c.ocr_query.size()>512)return {};
+    auto* parent=obs_filter_get_parent(f->context);
+    if(!parent)return {};
+    auto* producer=obs_source_get_filter_by_name(parent,c.ocr_filter.c_str());
+    if(!producer)return {};
+    std::optional<double> result;
+    const char* id=obs_source_get_unversioned_id(producer);
+    if(id&&std::string_view(id)=="sight_text_obfuscation_filter"&&obs_source_enabled(producer)){
+        calldata_t args;calldata_init(&args);calldata_set_int(&args,"max_age_ms",c.age_ms);
+        bool available=false;
+        auto* handler=obs_source_get_proc_handler(producer);
+        calldata_set_int(&args,"slot",c.ocr_slot);
+        if(handler&&proc_handler_call(handler,c.ocr_slot==1?"sight_ocr_output_v1":"sight_ocr_region_v1",&args)&&
+            calldata_get_bool(&args,"available",&available)&&available){
+            const char* raw=calldata_string(&args,"text");
+            if(raw){
+                std::string_view text(raw);
+                if(c.ocr_kind==0){
+                    auto n=sight::ocr_numeric(text);
+                    if(n&&std::isfinite(c.ocr_min)&&std::isfinite(c.ocr_max)&&c.ocr_max>c.ocr_min)
+                        result=std::clamp((*n-c.ocr_min)/(c.ocr_max-c.ocr_min),0.,1.);
+                }else result=sight::ocr_match(text,c.ocr_query,c.ocr_kind==2);
+            }
+        }
+        calldata_free(&args);
+    }
+    obs_source_release(producer);return result;
+}
 void tick(void* data,float seconds) {
     auto* f=static_cast<Filter*>(data);
     if(!obs_source_enabled(f->context)||!obs_filter_get_parent(f->context)){
@@ -353,7 +398,7 @@ void tick(void* data,float seconds) {
     uint64_t revision=0;
     bool release=false;
     {
-        std::lock_guard lock(f->mutex);
+        std::unique_lock lock(f->mutex);
         const auto& c=f->config;
         if(c.mode==0)f->oscillator.advance(seconds,c.wave.frequency);
         f->throttler+=std::clamp<double>(seconds,0,.2);
@@ -364,10 +409,16 @@ void tick(void* data,float seconds) {
         else {
             std::optional<double> normalized;
             if(c.mode==0)normalized=f->oscillator.sample(c.wave);
-            else {
+            else if(c.mode==1) {
                 sight::TrackingSignal signal;
                 if(sight::TrackingSignalBus::read(c.channel,std::chrono::milliseconds(c.age_ms),signal))
                     normalized=sight::read_signal_value(signal,c.feature,c.index,c.hand_index,c.hand_gesture);
+            }
+            else {
+                // Calls into another filter occur outside the router mutex.
+                const Configuration copied=c;
+                lock.unlock();normalized=read_ocr_value(f,copied);lock.lock();
+                if(revision!=f->revision)return;
             }
             if(c.threshold_gate)normalized=f->gate.sample(normalized,c.gate_activate,c.gate_release);
             if(normalized&&std::isfinite(*normalized))
@@ -429,6 +480,18 @@ void fill_inputs(Filter* f,obs_properties_t* props,obs_data_t* settings) {
     auto* feature=obs_properties_get(props,FEATURE);
     auto* index=obs_properties_get(props,INDEX);
     if(!channel||!feature||!index)return;
+    if(auto* ocr=obs_properties_get(props,"ocr_input_filter")){
+        obs_property_list_clear(ocr);obs_property_list_add_string(ocr,"Choose an OCR filter…","");
+        if(auto* parent=obs_filter_get_parent(f->context))
+            obs_source_enum_filters(parent,[](obs_source_t*,obs_source_t* filter,void* data){
+                const char* id=obs_source_get_unversioned_id(filter);
+                if(id&&std::string_view(id)=="sight_text_obfuscation_filter"){
+                    const char* name=obs_source_get_name(filter);
+                    obs_property_list_add_string(static_cast<obs_property_t*>(data),name,name);
+                }
+            },ocr);
+        retain_missing(ocr,obs_data_get_string(settings,"ocr_input_filter"));
+    }
     const auto choices=discover_channels(f->context);
     const std::string selected=obs_data_get_string(settings,CHANNEL);
     const auto age=std::chrono::milliseconds(std::clamp<int64_t>(obs_data_get_int(settings,AGE),100,5000));
@@ -613,19 +676,25 @@ bool refresh_all(obs_properties_t* props,obs_property_t*,void* data){
     return true;
 }
 bool mode_change(obs_properties_t* props,obs_property_t*,obs_data_t* settings) {
-    const bool wave=obs_data_get_int(settings,MODE)==0;
+    const auto input=obs_data_get_int(settings,MODE);
+    const bool wave=input==0,tracking=input==1,ocr=input==2;
+    const bool number=obs_data_get_int(settings,"ocr_input_kind")==0;
+    for(const char* key:{"ocr_input_filter","ocr_input_slot","ocr_input_kind","ocr_input_query","ocr_input_min","ocr_input_max"})
+        if(auto* p=obs_properties_get(props,key))
+            obs_property_set_visible(p,ocr&&(std::string_view(key)=="ocr_input_filter"||
+                std::string_view(key)=="ocr_input_kind"||std::string_view(key)=="ocr_input_slot"||(number!=(std::string_view(key)=="ocr_input_query"))));
     for(const char* key:{WAVE_TYPE,FREQ,AMP,PHASE,PULSE,STEPS,INVERT}) {
         auto* p=obs_properties_get(props,key);
         if(p)obs_property_set_visible(p,wave);
     }
     for(const char* key:{CHANNEL,FEATURE,INDEX,HAND_INDEX,HAND_GESTURE,AGE}) {
         auto* p=obs_properties_get(props,key);
-        if(p)obs_property_set_visible(p,!wave);
+        if(p)obs_property_set_visible(p,std::string_view(key)==AGE?!wave:tracking);
     }
     const auto chosen=obs_data_get_int(settings,FEATURE);
-    obs_property_set_visible(obs_properties_get(props,INDEX),!wave&&chosen!=7&&chosen!=8);
-    obs_property_set_visible(obs_properties_get(props,HAND_INDEX),!wave&&chosen>=5&&chosen<=8);
-    obs_property_set_visible(obs_properties_get(props,HAND_GESTURE),!wave&&chosen==8);
+    obs_property_set_visible(obs_properties_get(props,INDEX),tracking&&chosen!=7&&chosen!=8);
+    obs_property_set_visible(obs_properties_get(props,HAND_INDEX),tracking&&chosen>=5&&chosen<=8);
+    obs_property_set_visible(obs_properties_get(props,HAND_GESTURE),tracking&&chosen==8);
     return true;
 }
 bool response_change(obs_properties_t* props,obs_property_t*,obs_data_t* settings) {
@@ -642,6 +711,7 @@ obs_properties_t* properties(void* data) {
                         OBS_COMBO_TYPE_LIST,OBS_COMBO_FORMAT_INT);
     obs_property_list_add_int(mode,"Wave oscillator (no model required)",0);
     obs_property_list_add_int(mode,"Sight tracking channel",1);
+    obs_property_list_add_int(mode,"Sight OCR reading",2);
     obs_property_set_modified_callback(mode,mode_change);
     auto* wave=obs_properties_add_list(p,WAVE_TYPE,"Waveform",
                         OBS_COMBO_TYPE_LIST,OBS_COMBO_FORMAT_INT);
@@ -682,7 +752,20 @@ obs_properties_t* properties(void* data) {
         {"Closed fist",1},{"Open palm",2},{"Pointing up",3},
         {"Thumb down",4},{"Thumb up",5},{"Victory",6},{"I love you",7}})
         obs_property_list_add_int(gesture,label,id);
-    auto* age=obs_properties_add_int_slider(p,AGE,"Tracking expiry (ms)",100,5000,50);
+    auto* age=obs_properties_add_int_slider(p,AGE,"Signal expiry (ms)",100,5000,50);
+    auto* ocr=obs_properties_add_list(p,"ocr_input_filter","OCR filter on attached source",OBS_COMBO_TYPE_LIST,OBS_COMBO_FORMAT_STRING);
+    obs_property_list_add_string(ocr,"Choose an OCR filter…","");
+    auto* slot=obs_properties_add_list(p,"ocr_input_slot","Recognition region slot",OBS_COMBO_TYPE_LIST,OBS_COMBO_FORMAT_INT);
+    for(int i=1;i<=4;++i)obs_property_list_add_int(slot,("Region "+std::to_string(i)).c_str(),i);
+    auto* kind=obs_properties_add_list(p,"ocr_input_kind","OCR value",OBS_COMBO_TYPE_LIST,OBS_COMBO_FORMAT_INT);
+    obs_property_list_add_int(kind,"Single decimal number",0);
+    obs_property_list_add_int(kind,"Contains literal text",1);
+    obs_property_list_add_int(kind,"Exact text match",2);
+    obs_property_set_modified_callback(kind,mode_change);
+    obs_properties_add_text(p,"ocr_input_query","Match text (case-sensitive)",OBS_TEXT_DEFAULT);
+    obs_properties_add_float(p,"ocr_input_min","Input minimum",-1000000000,1000000000,.01);
+    obs_properties_add_float(p,"ocr_input_max","Input maximum",-1000000000,1000000000,.01);
+    obs_property_set_long_description(ocr,"Enable recognized text output in the named OCR filter's Original source mode. Use a dedicated recognition region.");
 
     auto* response=obs_properties_add_list(p,RESPONSE,"Response",
         OBS_COMBO_TYPE_LIST,OBS_COMBO_FORMAT_INT);

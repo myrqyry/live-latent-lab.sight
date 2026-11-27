@@ -1,0 +1,194 @@
+[
+  {
+    "family": "u2netp",
+    "precision": "fp32",
+    "file": "../u2netp.onnx",
+    "bytes": 4574861,
+    "sha256": "309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8",
+    "device": "cpu",
+    "p50_ms": 80.192,
+    "p90_ms": 80.87,
+    "range": [
+      3.2782554626464844e-07,
+      0.9999997615814209
+    ]
+  },
+  {
+    "family": "u2netp",
+    "precision": "fp32",
+    "file": "../u2netp.onnx",
+    "bytes": 4574861,
+    "sha256": "309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8",
+    "device": "cuda",
+    "p50_ms": 13.888,
+    "p90_ms": 14.604,
+    "range": [
+      3.5762786865234375e-07,
+      0.9999997615814209
+    ]
+  },
+  {
+    "family": "u2netp",
+    "precision": "fp16",
+    "file": "u2netp-fp16-io32.onnx",
+    "bytes": 2355542,
+    "sha256": "367dc2b0dab8c4455ecf15f6ec71d763f722a9e0c345f055dd8cc4b36c1c6e4b",
+    "device": "cuda",
+    "p50_ms": 9.474,
+    "p90_ms": 10.478,
+    "range": [
+      2.384185791015625e-07,
+      1.0
+    ],
+    "mae": 0.001349,
+    "p99": 0.03229,
+    "edge_mae": 0.019053,
+    "iou": 0.99732
+  },
+  {
+    "family": "u2netp",
+    "precision": "int8",
+    "file": "u2netp-int8-qdq.onnx",
+    "bytes": 1354614,
+    "sha256": "58ebe0c786335a932b329af196bca5ef4c0a74912766cbd608d9756203f2bfe7",
+    "device": "cpu",
+    "p50_ms": 92.499,
+    "p90_ms": 95.239,
+    "range": [
+      0.0,
+      0.9999204277992249
+    ],
+    "mae": 0.473135,
+    "p99": 0.99997,
+    "edge_mae": 0.541283,
+    "iou": 0.009726
+  },
+  {
+    "family": "modnet",
+    "precision": "fp32",
+    "file": "../modnet-fp32.onnx",
+    "bytes": 25888640,
+    "sha256": "07c308cf0fc7e6e8b2065a12ed7fc07e1de8febb7dc7839d7b7f15dd66584df9",
+    "device": "cpu",
+    "p50_ms": 78.042,
+    "p90_ms": 99.458,
+    "range": [
+      0.0,
+      1.0
+    ]
+  },
+  {
+    "family": "modnet",
+    "precision": "fp32",
+    "file": "../modnet-fp32.onnx",
+    "bytes": 25888640,
+    "sha256": "07c308cf0fc7e6e8b2065a12ed7fc07e1de8febb7dc7839d7b7f15dd66584df9",
+    "device": "cuda",
+    "p50_ms": 15.926,
+    "p90_ms": 17.301,
+    "range": [
+      0.0,
+      1.0
+    ]
+  },
+  {
+    "family": "modnet",
+    "precision": "fp16",
+    "file": "modnet-fp16-io32.onnx",
+    "bytes": 12980011,
+    "sha256": "9bbdf43c42abfd577376f161a114f4506b6d6833d9a328c95aa00f6eec4ccf1b",
+    "device": "cuda",
+    "p50_ms": 29.265,
+    "p90_ms": 30.736,
+    "range": [
+      0.0,
+      1.0
+    ],
+    "mae": 7.3e-05,
+    "p99": 0.000875,
+    "edge_mae": 0.001153,
+    "iou": 0.999967
+  },
+  {
+    "family": "modnet",
+    "precision": "int8",
+    "file": "modnet-int8-qdq.onnx",
+    "bytes": 6653946,
+    "sha256": "c813a4a24e01c52a73e4ec2b1f26974b3d96107771c694bc6c7fe56a24adf6b1",
+    "device": "cpu",
+    "p50_ms": 120.95,
+    "p90_ms": 126.971,
+    "range": [
+      0.0,
+      1.0
+    ],
+    "mae": 0.36465,
+    "p99": 1.0,
+    "edge_mae": 0.323356,
+    "iou": 0.263422
+  },
+  {
+    "family": "longpipe",
+    "precision": "fp32",
+    "file": "../longpipe-xs-landscape.onnx",
+    "bytes": 3613647,
+    "sha256": "75749759daa4d7e839e8aa189ce6a4e95edc72253b1f5028e833455ebae2f792",
+    "device": "cpu",
+    "p50_ms": 1.843,
+    "p90_ms": 1.958,
+    "range": [
+      0.0,
+      1.0
+    ]
+  },
+  {
+    "family": "longpipe",
+    "precision": "fp32",
+    "file": "../longpipe-xs-landscape.onnx",
+    "bytes": 3613647,
+    "sha256": "75749759daa4d7e839e8aa189ce6a4e95edc72253b1f5028e833455ebae2f792",
+    "device": "cuda",
+    "p50_ms": 1.308,
+    "p90_ms": 3.605,
+    "range": [
+      0.0,
+      1.0
+    ]
+  },
+  {
+    "family": "longpipe",
+    "precision": "fp16",
+    "file": "longpipe-fp16-io32.onnx",
+    "bytes": 1897979,
+    "sha256": "2bc93d68ea15aaef42dbe0eb6c1a73eb0e2fb19e496a4a63bef804c9ca544801",
+    "device": "cuda",
+    "p50_ms": 1.138,
+    "p90_ms": 2.474,
+    "range": [
+      0.0,
+      1.0
+    ],
+    "mae": 0.000236,
+    "p99": 0.004058,
+    "edge_mae": 0.012147,
+    "iou": 0.999458
+  },
+  {
+    "family": "longpipe",
+    "precision": "int8",
+    "file": "longpipe-int8-qdq.onnx",
+    "bytes": 1251468,
+    "sha256": "c528c79bcf328f6da91158e5a8faa3c66b4643b377917aae88e6e0b1d66c7e53",
+    "device": "cpu",
+    "p50_ms": 2.784,
+    "p90_ms": 3.258,
+    "range": [
+      0.0,
+      1.0
+    ],
+    "mae": 0.026338,
+    "p99": 0.998972,
+    "edge_mae": 0.323841,
+    "iou": 0.947141
+  }
+]

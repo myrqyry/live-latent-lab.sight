@@ -33,7 +33,7 @@ struct Filter {
     uint64_t render_correction_revision=0;
     unsigned correction_w=0,correction_h=0;
     Clock::time_point published_time{};
-    uint64_t published_revision=0;
+    uint64_t published_revision=0,published_predecessor=0;
     bool pending=false,stopping=false;
     std::atomic<uint64_t> revision{1};
     std::atomic<bool> wants{true};
@@ -86,6 +86,10 @@ void worker(Filter* f) {
         {
             std::lock_guard lock(f->mutex);
             if(f->revision==frame.revision) {
+                // A successful result links the immediately previous processed capture
+                // only if that capture itself produced a published snapshot.
+                f->published_predecessor=result.sequence&&f->published_revision==frame.revision
+                    ? f->published.sequence : 0;
                 f->published=result;f->published_correction=correction;
                 f->published_time=frame.captured;f->published_revision=frame.revision;
             }
@@ -115,17 +119,18 @@ void update(void* data,obs_data_t* s) {
        (mode==3&&(old_smooth!=smooth||old_crop!=crop)))++f->revision;
 }
 bool snapshot(Filter* f,sight_flow_v1& out,int age,sight::CameraCorrection* correction=nullptr,
-              Clock::time_point* captured=nullptr,bool* busy=nullptr) {
+              Clock::time_point* captured=nullptr,bool* busy=nullptr,uint64_t* predecessor=nullptr) {
     std::unique_lock lock(f->mutex,std::try_to_lock);
     if(busy)*busy=!lock.owns_lock();
     if(!lock||!obs_source_enabled(f->context)||!f->published.sequence||
        f->published_revision!=f->revision.load()||Clock::now()-f->published_time>std::chrono::milliseconds(age))return false;
     out=f->published;
+    if(predecessor)*predecessor=f->published_predecessor;
     if(correction)*correction=f->published_correction;
     if(captured)*captured=f->published_time;
     return true;
 }
-void read_flow(void* data,calldata_t* args) {
+void read_flow_common(void* data,calldata_t* args,bool linked) {
     auto* f=static_cast<Filter*>(data);
     calldata_set_bool(args,"available",false);
     long long age=0;void* ptr=nullptr;
@@ -134,10 +139,14 @@ void read_flow(void* data,calldata_t* args) {
     if(out->abi_version!=SIGHT_FLOW_ABI_V1||out->struct_size!=sizeof(*out))return;
     out->sequence=0;
     auto* target=obs_filter_get_target(f->context);
-    if(!target||!snapshot(f,*out,int(age))||out->source_width!=obs_source_get_base_width(target)||
+    uint64_t predecessor=0;
+    if(!target||!snapshot(f,*out,int(age),nullptr,nullptr,nullptr,&predecessor)||out->source_width!=obs_source_get_base_width(target)||
        out->source_height!=obs_source_get_base_height(target)) {out->sequence=0;return;}
+    if(linked)calldata_set_int(args,"previous_sequence",(long long)predecessor);
     calldata_set_bool(args,"available",true);
 }
+void read_flow(void* data,calldata_t* args){read_flow_common(data,args,false);}
+void read_flow_linked(void* data,calldata_t* args){read_flow_common(data,args,true);}
 void* create(obs_data_t* s,obs_source_t* context) {
     auto* f=new Filter;f->context=context;update(f,s);
     obs_enter_graphics();
@@ -146,6 +155,7 @@ void* create(obs_data_t* s,obs_source_t* context) {
         if(error){blog(LOG_ERROR,"[Sight/Flow] %s",error);bfree(error);}bfree(path);}
     obs_leave_graphics();
     proc_handler_add(obs_source_get_proc_handler(context),"void sight_flow_read_v1(in int max_age_ms, in ptr snapshot, out bool available)",read_flow,f);
+    proc_handler_add(obs_source_get_proc_handler(context),"void sight_flow_linked_v1(in int max_age_ms, in ptr snapshot, out int previous_sequence, out bool available)",read_flow_linked,f);
     f->worker=std::thread(worker,f);
     return f;
 }

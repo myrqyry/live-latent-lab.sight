@@ -1,3 +1,5 @@
+#include "common/backend-status.hpp"
+#include "common/model-diagnostics.hpp"
 #include "common/preferences.hpp"
 #include <obs-module.h>
 #include "core/analysis_capture.hpp"
@@ -24,29 +26,70 @@
 #include "core/sight_matte_v1.h"
 #include "core/sight_motion_v1.h"
 #include "core/subject_motion.hpp"
+#include "core/longpipe-flow.hpp"
 
 // U2Net subject matte. This is a distinct, independently-verified effect.
 // Frame capture, ONNX inference, and output upload have separate thread ownership.
 namespace {
 constexpr const char *MODEL_PATH = "model_path";
+constexpr const char *MODEL_FAMILY = "cutout_model_family";
+constexpr const char *DEVICE = "cutout_device";
+constexpr const char *FLOW_PATH = "cutout_flow_model";
+enum class Device {Auto=0, CPU=1, CUDA=2};
+Device requested_device(obs_data_t* settings){
+    switch(obs_data_get_int(settings,DEVICE)){
+        case 1:return Device::CPU;
+        case 2:return Device::CUDA;
+        default:return Device::Auto;
+    }
+}
+lll::SegModelType model_family(obs_data_t* settings){
+    switch(obs_data_get_int(settings,MODEL_FAMILY)){
+        case 1:return lll::SegModelType::MODNet;
+        case 2:return lll::SegModelType::Longpipe;
+        default:return lll::SegModelType::U2Net;
+    }
+}
 constexpr const char *TREATMENT_MODE = "subject_treatment";
 constexpr const char *TREATMENT_STRENGTH = "subject_strength";
 constexpr const char *REFINE_EDGES = "refine_edges";
 constexpr int MAX_TREATMENT = 3;
-constexpr uint32_t MAX_INFERENCE_DIMENSION = 320;
-std::pair<uint32_t, uint32_t> capture_dimensions(uint32_t width, uint32_t height)
+
+std::pair<uint32_t, uint32_t> capture_dimensions(uint32_t width, uint32_t height,uint32_t edge)
 {
     if (width == 0 || height == 0)
         return {0, 0};
     const uint32_t longest = std::max(width, height);
-    if (longest <= MAX_INFERENCE_DIMENSION)
+    if (longest <= edge)
         return {width, height};
     return {
         std::max(1u, static_cast<uint32_t>(
-            static_cast<uint64_t>(width) * MAX_INFERENCE_DIMENSION / longest)),
+            static_cast<uint64_t>(width) * edge / longest)),
         std::max(1u, static_cast<uint32_t>(
-            static_cast<uint64_t>(height) * MAX_INFERENCE_DIMENSION / longest))
+            static_cast<uint64_t>(height) * edge / longest))
     };
+}
+
+// Keep the public v1 matte bounded independently of render quality.
+std::vector<uint8_t> shared_matte(const std::vector<uint8_t>&mask,
+                                  uint32_t w,uint32_t h,uint32_t sw,uint32_t sh)
+{
+    if(w==sw&&h==sh)return {};
+    std::vector<uint8_t> result(size_t(sw)*sh);
+    for(uint32_t y=0;y<sh;++y){
+        const float fy=sh>1?float(y)*float(h-1)/float(sh-1):float(h-1)*.5f;
+        const auto y0=std::min(uint32_t(fy),h-1),y1=std::min(y0+1,h-1);
+        const float dy=fy-y0;
+        for(uint32_t x=0;x<sw;++x){
+            const float fx=sw>1?float(x)*float(w-1)/float(sw-1):float(w-1)*.5f;
+            const auto x0=std::min(uint32_t(fx),w-1),x1=std::min(x0+1,w-1);
+            const float dx=fx-x0;
+            const float top=mask[size_t(y0)*w+x0]*(1-dx)+mask[size_t(y0)*w+x1]*dx;
+            const float bot=mask[size_t(y1)*w+x0]*(1-dx)+mask[size_t(y1)*w+x1]*dx;
+            result[size_t(y)*sw+x]=uint8_t(std::clamp(std::lround(top*(1-dy)+bot*dy),0L,255L));
+        }
+    }
+    return result;
 }
 
 std::atomic<uint64_t> matte_sequence{0};
@@ -59,8 +102,12 @@ struct U2NetFilter {
     bool stopping = false;
     bool load_requested = false;
     bool frame_pending = false;
-    std::string requested_path;
+    std::string requested_path,requested_flow;
+    lll::SegModelType requested_family=lll::SegModelType::U2Net;
+    Device device=Device::Auto;
+    std::atomic<uint32_t> capture_edge{320};
     std::string active_path;
+    sight_backend::Status backend_status;
     uint64_t model_generation = 0;
     uint32_t frame_width = 0, frame_height = 0;
     uint32_t frame_source_width = 0, frame_source_height = 0;
@@ -79,7 +126,8 @@ struct U2NetFilter {
     std::atomic<bool> wants_frame{false};
 
     std::mutex output_mutex;
-    std::vector<uint8_t> output_mask, raw_mask;
+    std::vector<uint8_t> output_mask, raw_mask, shared_mask;
+    uint32_t shared_width=0,shared_height=0;
     uint32_t output_width = 0, output_height = 0;
     uint32_t output_source_width = 0, output_source_height = 0;
     std::chrono::steady_clock::time_point output_time{};
@@ -105,6 +153,7 @@ void worker_main(U2NetFilter *f)
 {
     lll::SegmentationProcessor processor;
     sight::SubjectMatteHistory history;
+    sight::LongpipeFlow flow;
     sight::SubjectMotion motion;
     using Clock = std::chrono::steady_clock;
     double accumulated_inference_ms = 0;
@@ -113,7 +162,9 @@ void worker_main(U2NetFilter *f)
     Clock::time_point previous_result{};
     for (;;) {
         std::vector<uint8_t> frame;
-        std::string model_path;
+        std::string model_path,flow_path;
+        auto family=lll::SegModelType::U2Net;
+        auto device=Device::Auto;
         uint32_t w = 0, h = 0, source_w = 0, source_h = 0;
         Clock::time_point captured{};
         uint64_t generation = 0;
@@ -128,6 +179,9 @@ void worker_main(U2NetFilter *f)
             if (f->load_requested) {
                 do_load = true;
                 model_path = f->requested_path;
+                flow_path=f->requested_flow;
+                family=f->requested_family;
+                device=f->device;
                 generation = f->model_generation;
                 f->load_requested = false;
                 f->frame_pending = false;
@@ -147,7 +201,9 @@ void worker_main(U2NetFilter *f)
             history.reset();
             motion.reset();
             const bool loaded = !model_path.empty() &&
-                processor.load(model_path.c_str(), lll::SegModelType::U2Net, false);
+                processor.load(model_path.c_str(), family, device!=Device::CPU, device==Device::CUDA);
+            flow.load(loaded&&family==lll::SegModelType::Longpipe?flow_path:std::string(),
+                processor.input_width(),processor.input_height(),device!=Device::CPU,device==Device::CUDA);
             accumulated_inference_ms = 0;
             measured_frames = 0;
             {
@@ -155,11 +211,18 @@ void worker_main(U2NetFilter *f)
                 if (generation != f->model_generation)
                     continue;
                 f->active_path = loaded ? model_path : std::string();
+                f->backend_status.complete(model_path,loaded,processor.configured_provider(),processor.last_error());
+                f->backend_status.detail=flow.status();
+                f->capture_edge=family==lll::SegModelType::U2Net?320:
+                    family==lll::SegModelType::Longpipe&&loaded?std::max(512,processor.input_edge()):512;
                 f->model_ready = loaded;
                 f->wants_frame = loaded;
             }
-            if (loaded)
+            if (loaded) {
                 blog(LOG_INFO, "[Sight/U2Net] Loaded real ONNX model: %s", model_path.c_str());
+                blog(LOG_INFO, "[Sight/U2Net] SIGHT_CUTOUT_FAMILY_20261126_K427 family=%d device=%d", int(family),int(device));
+                blog(LOG_INFO, "[Sight/U2Net] SIGHT_MATTE_ABI_BOUND_20261126_Q582 capture_edge=%u shared_edge=%u", f->capture_edge.load(),SIGHT_MATTE_MAX_EDGE);
+            }
             else if (!model_path.empty())
                 blog(LOG_ERROR, "[Sight/U2Net] Failed to load model: %s", model_path.c_str());
             continue;
@@ -180,35 +243,50 @@ void worker_main(U2NetFilter *f)
         std::vector<uint8_t> mask(static_cast<size_t>(w) * h);
         const auto inference_start = Clock::now();
         const bool succeeded = processor.process(rgb.data(), w, h, mask.data());
-        const double inference_ms = std::chrono::duration<double, std::milli>(
+        double inference_ms = std::chrono::duration<double, std::milli>(
             Clock::now() - inference_start).count();
         if (!succeeded) {
-            history.reset();
+            history.reset();flow.reset();
             motion.reset();
             blog(LOG_ERROR, "[Sight/U2Net] Actual subject mask inference failed: %ux%u", w, h);
             std::lock_guard lock(f->input_mutex);
-            if (f->model_ready && generation == f->model_generation)
+            if (f->model_ready && generation == f->model_generation) {
+                f->backend_status.health.record(false,inference_ms,Clock::now());
                 f->wants_frame = true;
+            }
             continue;
         }
 
-        if (f->reset_history.exchange(false))
-            history.reset();
+        if (f->reset_history.exchange(false)){
+            history.reset();flow.reset();
+        }
         std::vector<uint8_t> raw;
         const float retention = f->retention.load();
         if (retention > 0.f)
             raw = mask;
         const auto now = Clock::now();
-        if (now - previous_result > std::chrono::seconds(2))
-            history.reset();
+        if (now - previous_result > std::chrono::seconds(2)){
+            history.reset();flow.reset();
+        }
         previous_result = now;
-        const auto blended = history.apply(mask, rgb, w, h, retention);
+        size_t blended=0;
+        if(flow.ready()){
+            history.reset();
+            const auto flow_start=Clock::now();
+            auto prior_runs=flow.runs();
+            blended=flow.apply(mask,rgb,processor.canvas_rgb(),w,h,source_w,source_h,captured,retention);
+            inference_ms+=std::chrono::duration<double,std::milli>(Clock::now()-flow_start).count();
+            if((prior_runs==0&&flow.runs()>0)||!flow.ready())
+                blog(LOG_INFO,"[Sight/Cutout] SIGHT_LONGPIPE_FLOW_ADAPTIVE_20261126_N417 %s",flow.status().c_str());
+        }else blended=history.apply(mask, rgb, w, h, retention);
         if (blended && !announced_history) {
             blog(LOG_INFO, "[Sight/U2Net] SIGHT_MATTE_HISTORY_20261117: %zu stable pixels blended", blended);
             announced_history = true;
         }
 
         const auto motion_sample = motion.update(rgb,w,h,source_w,source_h,captured);
+        const auto [sw,sh]=capture_dimensions(w,h,SIGHT_MATTE_MAX_EDGE);
+        auto compact=shared_matte(mask,w,h,sw,sh);
 
         // Inference only returns a small matte. Rendering later applies it to
         // the live original-resolution source entirely on the GPU, so no
@@ -220,6 +298,8 @@ void worker_main(U2NetFilter *f)
                 continue;
             std::lock_guard out_lock(f->output_mutex);
             f->output_mask = std::move(mask);
+            f->shared_mask=std::move(compact);
+            f->shared_width=sw;f->shared_height=sh;
             f->raw_mask = std::move(raw);
             f->output_width = w;
             f->output_height = h;
@@ -229,6 +309,9 @@ void worker_main(U2NetFilter *f)
             f->output_sequence = ++matte_sequence;
             f->output_motion = motion_sample;
             f->new_output = true;
+            f->backend_status.detail=flow.status();
+            if(flow.ready())f->backend_status.detail+="; flow runs="+std::to_string(flow.runs());
+            f->backend_status.health.record(true,inference_ms,Clock::now());
             accumulated_inference_ms += inference_ms;
             ++measured_frames;
             if (measured_frames == 8 && accumulated_inference_ms > 0) {
@@ -266,16 +349,18 @@ void read_matte(void *data, calldata_t *params)
         !f->output_sequence || f->output_mask.empty() ||
         std::chrono::steady_clock::now() - f->output_time > std::chrono::milliseconds(max_age))
         return;
-    const auto count = size_t(f->output_width)*f->output_height;
-    if (count != f->output_mask.size() || count > SIGHT_MATTE_MAX_PIXELS)
+    const auto&pixels=f->shared_mask.empty()?f->output_mask:f->shared_mask;
+    const auto count=size_t(f->shared_width)*f->shared_height;
+    if (!count || f->shared_width>SIGHT_MATTE_MAX_EDGE || f->shared_height>SIGHT_MATTE_MAX_EDGE ||
+        count != pixels.size() || count > SIGHT_MATTE_MAX_PIXELS)
         return;
-    out->width = f->output_width;
-    out->height = f->output_height;
+    out->width = f->shared_width;
+    out->height = f->shared_height;
     out->source_width = f->output_source_width;
     out->source_height = f->output_source_height;
     out->sequence = f->output_sequence;
     if (uint64_t(known_sequence) != out->sequence)
-        std::memcpy(out->pixels,f->output_mask.data(),count);
+        std::memcpy(out->pixels,pixels.data(),count);
     calldata_set_bool(params,"available",true);
 }
 
@@ -320,9 +405,13 @@ void *create(obs_data_t *settings, obs_source_t *context)
     if (f->retention.exchange(retention) != retention)
         f->reset_history = true;
     f->matte_view = std::clamp(int(obs_data_get_int(settings, "matte_view")), 0, 4);
+    f->requested_family=model_family(settings);
+    f->requested_flow=obs_data_get_string(settings,FLOW_PATH);
+    f->device=requested_device(settings);
     const char *path = obs_data_get_string(settings, MODEL_PATH);
     if (path && *path) {
         f->requested_path = path;
+        f->backend_status.request(path);
         f->load_requested = true;
         ++f->model_generation;
     }
@@ -373,6 +462,9 @@ void update(void *data, obs_data_t *settings)
     auto *f = static_cast<U2NetFilter *>(data);
     const char *path = obs_data_get_string(settings, MODEL_PATH);
     const std::string selected = path ? path : "";
+    const auto family=model_family(settings);
+    const auto device=requested_device(settings);
+    const std::string flow_path=obs_data_get_string(settings,FLOW_PATH);
     f->treatment_mode = std::clamp(
         static_cast<int>(obs_data_get_int(settings, TREATMENT_MODE)), 0, MAX_TREATMENT);
     f->treatment_strength = std::clamp(
@@ -387,13 +479,18 @@ void update(void *data, obs_data_t *settings)
     f->matte_view = std::clamp(int(obs_data_get_int(settings, "matte_view")), 0, 4);
     {
         std::lock_guard lock(f->input_mutex);
-        if (selected == f->requested_path)
+        if (selected == f->requested_path && family==f->requested_family && device==f->device && flow_path==f->requested_flow)
             return;
         f->requested_path = selected;
+        f->requested_family=family;
+        f->requested_flow=flow_path;
+        f->device=device;
+        f->backend_status.request(selected);
         f->load_requested = true;
         f->model_ready = false;
         f->wants_frame = false;
         f->frame_pending = false;
+        f->backend_status.health={};
         ++f->model_generation;
         f->announced_first_frame = false;
         f->reset_output_texture = true;
@@ -402,6 +499,7 @@ void update(void *data, obs_data_t *settings)
         std::lock_guard lock(f->output_mutex);
         f->new_output = false;
         f->output_mask.clear();
+        f->shared_mask.clear();f->shared_width=f->shared_height=0;
         f->output_sequence = 0;
         f->output_motion = {};
         f->raw_mask.clear();
@@ -412,6 +510,9 @@ void update(void *data, obs_data_t *settings)
 void defaults(obs_data_t *settings)
 {
     obs_data_set_default_string(settings, MODEL_PATH, "");
+    obs_data_set_default_int(settings,MODEL_FAMILY,0);
+    obs_data_set_default_int(settings,DEVICE,0);
+    obs_data_set_default_string(settings,FLOW_PATH,"");
     obs_data_set_default_int(settings, TREATMENT_MODE, 0);
     obs_data_set_default_double(settings, TREATMENT_STRENGTH, 0.7);
     obs_data_set_default_bool(settings, REFINE_EDGES, false);
@@ -472,12 +573,39 @@ obs_properties_t *properties(void *data)
 {
     obs_properties_t *p = obs_properties_create();
     const auto folder = model_browser_directory(static_cast<U2NetFilter *>(data));
+    auto*family=obs_properties_add_list(p,MODEL_FAMILY,"Model family",OBS_COMBO_TYPE_LIST,OBS_COMBO_FORMAT_INT);
+    obs_property_list_add_int(family,"U²-Net / U²-NetP (general subjects)",0);
+    obs_property_list_add_int(family,"MODNet (portrait matting)",1);
+    obs_property_list_add_int(family,"Longpipe (portrait matting)",2);
     obs_property_t *path = obs_properties_add_path(
-        p, MODEL_PATH, "U2Net foreground segmentation model",
+        p, MODEL_PATH, "Foreground / alpha model",
         OBS_PATH_FILE, "ONNX model (*.onnx)",
         folder.empty() ? nullptr : folder.c_str());
+    sight_diagnostics::add<sight_diagnostics::Format::Onnx>(p,path);
+    auto*device=obs_properties_add_list(p,DEVICE,"Inference device",OBS_COMBO_TYPE_LIST,OBS_COMBO_FORMAT_INT);
+    obs_property_list_add_int(device,"Auto (CUDA when available)",0);
+    obs_property_list_add_int(device,"CPU",1);
+    obs_property_list_add_int(device,"CUDA (required)",2);
+    obs_property_set_long_description(device,
+        "Choose per filter. CPU is useful for lightweight FP32 models. "
+        "CUDA requires an initialized CUDA session; individual operators may still use CPU. "
+        "The process-wide SIGHT_ONNX_DEVICE=cpu override disables CUDA. "
+        "Changing device reloads the selected model. Failed loading passes through video.");
+    auto*flow_picker=obs_properties_add_path(p,FLOW_PATH,"Longpipe optical flow (optional)",
+        OBS_PATH_FILE,"ONNX model (*.onnx)",folder.empty()?nullptr:folder.c_str());
+    obs_property_set_long_description(flow_picker,
+        "Select the matching tier/orientation flow graph. Used with nonzero Matte stabilization. "
+        "Fresh matting still runs each cycle; mismatched or failed flow falls back to ordinary stabilization.");
+    obs_property_set_modified_callback(family,[](obs_properties_t*props,obs_property_t*,obs_data_t*settings){
+        auto*field=obs_properties_get(props,FLOW_PATH);
+        const bool visible=model_family(settings)==lll::SegModelType::Longpipe;
+        const bool changed=obs_property_visible(field)!=visible;
+        obs_property_set_visible(field,visible);return changed;
+    });
+    obs_property_set_visible(flow_picker,false);
+    sight_backend::add(p,static_cast<U2NetFilter *>(data));
     obs_property_set_long_description(path,
-        "U2Net produces a foreground alpha mask. The default Cutout mode preserves "
+        "Select the matching model family and local ONNX file. The default Cutout mode preserves "
         "the original behavior. No model or mask = passthrough.");
     obs_property_t *mode = obs_properties_add_list(p, TREATMENT_MODE,
         "Mask treatment", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
@@ -486,7 +614,7 @@ obs_properties_t *properties(void *data)
     obs_property_list_add_int(mode, "Warm subject (color treatment)", 2);
     obs_property_list_add_int(mode, "Soft subject edge glow", 3);
     obs_property_set_long_description(mode,
-        "Use the real U2Net foreground mask to alter only the subject or surroundings. "
+        "Use the selected model’s foreground mask to alter only the subject or surroundings. "
         "This detects foreground, not arbitrary prompt-selected objects or SAM3 tracking.");
     obs_properties_add_float_slider(p, TREATMENT_STRENGTH,
         "Treatment strength", 0.0, 1.0, 0.01);
@@ -552,7 +680,8 @@ void render(void *data, gs_effect_t *)
             return;
         }
     }
-    const auto [pw, ph] = capture_dimensions(width, height);
+    const auto edge=f->capture_edge.load();
+    const auto [pw, ph] = capture_dimensions(width, height,edge);
 
     if (f->model_ready && f->wants_frame.exchange(false)) {
         bool submitted = false;
@@ -593,7 +722,7 @@ void render(void *data, gs_effect_t *)
                                 std::memcpy(frame.data() + static_cast<size_t>(y) * pw * 4,
                                     pixels + static_cast<size_t>(y) * pitch, pw * 4);
                             std::lock_guard lock(f->input_mutex);
-                            if (f->model_ready && !f->load_requested) {
+                            if (f->model_ready && !f->load_requested && edge==f->capture_edge.load()) {
                                 f->input_rgba = std::move(frame);
                                 f->frame_width = pw;
                                 f->frame_height = ph;
@@ -645,7 +774,7 @@ void render(void *data, gs_effect_t *)
         return;
     }
 
-    // The mask was inferred at <= 320px. The original colors must remain
+    // The matte has its own inference resolution. The original colors must remain
     // full-resolution in the output; this capture stays on the GPU.
     if (!f->full_resolution)
         f->full_resolution = gs_texrender_create(GS_RGBA, GS_ZS_NONE);

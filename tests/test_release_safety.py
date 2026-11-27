@@ -43,6 +43,11 @@ class ReleaseSafetyTests(unittest.TestCase):
                 capture_output=True, text=True, timeout=90,
             )
             self.assertEqual(configured.returncode, 0, configured.stderr[-2000:])
+            self.assertIn("SIGHT_STAGE_LOCAL_MEDIAPIPE:BOOL=OFF",
+                          (build / "CMakeCache.txt").read_text())
+            install = (build / "cmake_install.cmake").read_text()
+            self.assertNotRegex(install, r'TYPE DIRECTORY FILES "[^"\n]*/data/"')
+            self.assertIn('sight-subject-matte.effect', install)
             attempted = subprocess.run(
                 ["cmake", "--install", str(build)],
                 capture_output=True, text=True, timeout=30,

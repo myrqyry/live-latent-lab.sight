@@ -15,7 +15,9 @@ namespace lll {
         U2Net,           // 320x320, standard normalization
         RMBG,            // 1024x1024, (x-0.5)/0.5
         InSPyReNet,      // 384x384 (SwinB) or 1024x1024, ImageNet norm
-        General          // Generic fallback
+        General,         // Generic fallback
+        MODNet,          // RGB normalized to [-1,1], dynamic NCHW
+        Longpipe         // RGB [0,1], fixed rectangular NCHW
     };
 
     class SegmentationProcessor {
@@ -31,11 +33,22 @@ namespace lll {
          * Load segmentation model
          * @param model_path Path to ONNX model
          * @param type Model type (defines input size and normalization)
-         * @param use_gpu Enable GPU acceleration
+         * @param use_gpu Prefer GPU acceleration
+         * @param require_cuda Reject CPU fallback on the validated native path
          */
-        bool load(const char* model_path, SegModelType type = SegModelType::U2Net, bool use_gpu = true);
+        bool load(const char* model_path, SegModelType type = SegModelType::U2Net, bool use_gpu = true, bool require_cuda = false);
         
+        const char* configured_provider() const {return provider_;}
+        const std::string& last_error() const {return last_error_;}
         bool is_ready() const { return ready_; }
+        int input_edge() const {return input_width_>input_height_?input_width_:input_height_;}
+        unsigned input_width() const {return input_width_;}
+        unsigned input_height() const {return input_height_;}
+#ifdef USE_ONNX_MEDIAPIPE
+        const std::vector<float>& canvas_rgb() const {return input_tensor_values_;}
+#else
+        const std::vector<float>& canvas_rgb() const {static const std::vector<float> empty;return empty;}
+#endif
 
         /**
          * Generate alpha mask from RGB image
@@ -47,9 +60,11 @@ namespace lll {
         bool process(const uint8_t* rgb, int width, int height, uint8_t* alpha_out);
 
     private:
+        const char* provider_=nullptr;
+        std::string last_error_;
         bool ready_ = false;
         SegModelType type_ = SegModelType::U2Net;
-        int input_size_ = 320;
+        int input_width_ = 320, input_height_ = 320;
         
 #ifdef USE_ONNX_MEDIAPIPE
         std::unique_ptr<Ort::Env> env_;

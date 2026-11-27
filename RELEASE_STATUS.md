@@ -91,3 +91,30 @@ build cache and installed Sight binary untouched: installed development
 version includes newer OCR functionality absent from this curated checkout.
 No private development history imported, no SDK/weights added, no push or
 publication. Full combined inference suite not rerun.
+
+## Integrated vision release candidate (2026-11-26)
+
+Ported the maintained cutout, backend diagnostics, shared motion, semantic
+regions, local OCR and Value Router changes while preserving the ten-source
+curated registration boundary. Full configured 115-case Linux suite:
+114 passed initially, including RTMW GPU, real six-mode tracking, OCR
+routing/editor and all cutout/flow model tests. The VRM face easing smoke
+failed an arbitrary first-frame pixel-count ratio despite actual continued
+motion and correct hold/return. The corrected test checks continued change
+and retains hold and return checks; real OBS rerun passed. This is combined
+qualification of an unchanged module and rebuilt test, not a single green
+115-case rerun. Release safety tests and technical install passed.
+Default stage: 18 files, no test-only MediaPipe library or untracked data
+canary; explicit ABI-verified local MediaPipe staging remains opt-in.
+
+Nine pre-integration reachable commits and 64 pending files were scanned
+for common private-key/API-key patterns and developer absolute paths, with
+no matches. This is a targeted scan, not exhaustive security or legal
+clearance. The two binary blobs are the pinned ONNX Runtime ELF and a
+compressed OCR fixture; libfacedetection includes embedded CNN arrays.
+Verified EnTT v3.16.0 header against upstream and restored its MIT notice.
+The original ONNX Runtime v1.17.1 upstream archive could not be fetched
+(HTTP 404); exact origin remains a release gate. Original plugin license,
+source provenance, clean-machine qualification and experimental feature
+promotion remain open. See [audit receipt](docs/qualification/curated-release-audit-20261126.json).
+No visibility change or publication.

@@ -23,10 +23,10 @@ All entries use the `LLL.sight` prefix in OBS.
 | --- | --- |
 | Tracking | Face, body, hands and gestures, holistic, objects, and optional GPU WholeBody (RTMW) |
 | Portrait Sketch (ControlNet Prep) | Model-based portrait line art |
-| Subject Cutout (U2Net) | Foreground separation and shared subject matte |
+| Subject Cutout (U2Net, MODNet, Longpipe) | Foreground separation, optional motion-compensated Longpipe stabilization and shared matte |
 | Depth Camera (Depth Anything) | Relative inverse depth and shared depth map |
 | Spatial Motion (DIS) | Optional optical flow and motion signals |
-| Text Obfuscation (OCR) | Optional local text-region detection and treatment |
+| Text Obfuscation (OCR) | Optional local OCR, named regions, visual editor and confirmed text routing |
 | Privacy V2 — Conceal All Faces (Experimental) | Experimental face concealment |
 | Tracking Signal Receiver | Shared tracking snapshots without another model |
 | Value Router (Signals + Waves) | Drive OBS properties from signals and waves |
@@ -36,21 +36,29 @@ Choose a mode and model in **LLL.sight Tracking**. Each instance runs
 one selected model pipeline; add another instance for simultaneous
 tracking. The six former standalone trackers are no longer registered.
 
-### Use with HyperShaderFX
+### Use with hypershader
 
 Sight provides reusable tracking, matte, depth, motion, optical flow and
-OCR-region signals. HyperShaderFX consumes them for creative effects.
+OCR-region signals. hypershader consumes them for creative effects.
 For hand ripples, place Tracking in Hands & gestures mode upstream of
-HyperShaderFX on the same source, disable its overlay, enable shared Sight
-snapshots in HyperShaderFX, select the hand channel and choose
+hypershader on the same source, disable its overlay, enable shared Sight
+snapshots in hypershader, select the hand channel and choose
 **Sight: Hand Ripples**. The former standalone Touch Field filter is removed.
 
 The expanded Linux build registers the ten entries above. Spatial Motion
 and Text Obfuscation require optional system libraries; WholeBody needs
 LiteRT GPU support. Native Live2D remains an [optional local development build](docs/live2d-native.md) using a separately acquired official SDK; it is excluded from the default preview binary, not removed from the source. Unvalidated generative effects remain gated.
 
+Subject Cutout supports U²-Net/U²-NetP, MODNet and Longpipe, per-instance
+Auto/CPU/required CUDA selection, adaptive optional flow and bounded shared
+matte/motion. See [cutout models](docs/model-downloads.md#subject-cutout-models),
+[precision](docs/cutout-precision.md) and [flow](docs/longpipe-flow.md).
+Model/runtime preflight, actual backend status and recent inference health are
+available in supported filters. Optional [semantic obfuscation and geometry](docs/semantic-obfuscation.md)
+use user-supplied ONNX weights; not a guarantee of redaction.
+
 Model-backed effects require separately acquired compatible models and
-runtime libraries. See [model setup](docs/model-downloads.md) and
+runtime libraries. See [optional CUDA](docs/onnx-cuda.md), [model setup](docs/model-downloads.md) and
 [MediaPipe ABI notes](docs/mediapipe-1.2.3.md). Privacy V2 is experimental;
 it is not a guarantee of anonymity or complete redaction.
 
@@ -72,7 +80,10 @@ Requirements: Linux, OBS 32 development headers and libobs, C++20,
 CMake, the matching ONNX Runtime 1.17.1, and xvfb-run for graphics tests.
 The [pinned ONNX Runtime dependency](docs/onnx-runtime.md) is required for
 vision inference. Its headers, shared library and legal notices are retained;
-redistribution review remains open.
+redistribution review remains open. A separately acquired MediaPipe runtime
+is not copied into the package merely because it is supplied for testing.
+For explicit local staging only, set `SIGHT_STAGE_LOCAL_MEDIAPIPE=ON` with
+the ABI-verified `SIGHT_MEDIAPIPE_LIB` path.
 
 ```sh
 cmake -S . -B build-public -DCMAKE_BUILD_TYPE=Release
@@ -84,7 +95,8 @@ cmake --install build-public --prefix "$PWD/stage"
 
 Tests with actual inference require explicit model/runtime/fixture paths;
 a reduced model-free test matrix does not qualify all tracking modes.
-Do not install into an active OBS process. No user models are shipped.
+Do not install into an active OBS process. No separately acquired model files are shipped. The vendored BSD
+libfacedetection implementation includes its embedded CNN arrays.
 
 ## Optional GPU tracking
 
@@ -104,8 +116,10 @@ cmake --build build-public --parallel 4
 
 Select the corresponding compatible model files in OBS. Real GPU acceptance
 requires the RTMW and YOLOX model files plus the MediaPipe tracking fixtures.
-The final expanded Linux configuration passed all 92 configured CTest
-checks, and release staging and the real HyperShaderFX integration passed.
+The earlier expanded Linux configuration passed all 92 configured CTest
+checks and real hypershader integration. The latest curated integration
+completed 114 of 115 tests on the first run; the corrected VRM easing
+assertion passed on a targeted rebuild. See the release status for scope.
 See [release status](RELEASE_STATUS.md) for exact evidence and limitations.
 
 ## Release gate

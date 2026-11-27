@@ -4,6 +4,7 @@
 #include <chrono>
 #include <thread>
 #include <cstdio>
+#include <iostream>
 #include <string>
 #include <filesystem>
 #include <vector>
@@ -18,6 +19,24 @@ static bool read(obs_source_t* receiver,const std::string& channel,unsigned expe
     return ok&&(expected?available&&snap.kind==expected&&snap.point_count>=count&&
         (!empty||snap.point_count==0)&&(face_extras<0||
         (face_extras? (snap.blendshape_count==52&&snap.has_head_transform):(!snap.blendshape_count&&!snap.has_head_transform))):!available);
+}
+static bool backend(obs_source_t*source,const char*expected){
+    auto*props=obs_source_properties(source);
+    if(!props)return false;
+    auto*status=obs_properties_get(props,"sight_backend_status");
+    auto*button=obs_properties_get(props,"sight_backend_refresh");
+    bool ok=status&&button&&obs_property_button_clicked(button,source);
+    const char*desc=status?obs_property_description(status):nullptr;
+    ok=ok&&desc&&std::string(desc).find(expected)!=std::string::npos;
+    auto*health=obs_properties_get(props,"sight_inference_health");
+    const std::string health_text=health?obs_property_description(health):"missing";
+    if(std::string(expected).find("Loaded")!=std::string::npos)
+        ok=ok&&health_text.find("Recent inference")!=std::string::npos&&health_text.find("Successful:")!=std::string::npos;
+    else if(std::string(expected)=="Tracking off")
+        ok=ok&&health_text.find("unavailable")!=std::string::npos;
+    std::cout<<"SIGHT_TRACKING_HEALTH "<<health_text<<"\n";
+    if(!ok)fprintf(stderr,"backend expected %s, got %s\n",expected,desc?desc:"missing");
+    obs_properties_destroy(props);return ok;
 }
 static bool inventory(obs_source_t* receiver,const std::string& channel,unsigned kind){
     auto* out=obs_data_create();calldata_t d{};calldata_set_ptr(&d,"inventory",out);
@@ -128,6 +147,7 @@ int main(int argc,char** argv){
     for(const auto* key:native_fields)native=native&&obs_properties_get(p,key);
     obs_data_release(d);obs_properties_destroy(p);
     bool face=wait(source,[&]{return read(receiver,"unified/face",SIGHT_SNAPSHOT_FACE,478);});
+    bool cpu_backend=backend(f,"Loaded — MediaPipe CPU");
     bool face_list=inventory(receiver,"unified/face",SIGHT_SNAPSHOT_FACE);
     const bool face_extras=read(receiver,"unified/face",SIGHT_SNAPSHOT_FACE,478,1);
     d=obs_data_create();obs_data_set_bool(d,"face_publish_blendshapes",false);obs_data_set_bool(d,"face_publish_head_transform",false);
@@ -150,6 +170,7 @@ int main(int argc,char** argv){
     bool obj=wait(source,[&]{return objects(f,true,1)&&read(receiver,"unified/holistic/face",0)&&read(receiver,"unified/holistic/body",0)&&read(receiver,"unified/holistic/hand",0);});
     set_mode(f,"rtmw");
     bool rtmw=wait(source,[&]{return read(receiver,"unified/rtmw",SIGHT_SNAPSHOT_WHOLEBODY,133)&&objects(f,false);});
+    bool gpu_backend=backend(f,"Loaded — LiteRT GPU");
     d=obs_data_create();obs_data_set_int(d,"rtmw_person_confidence",95);obs_source_update(f,d);obs_data_release(d);
     bool rejects=wait(source,[&]{return read(receiver,"unified/rtmw",SIGHT_SNAPSHOT_WHOLEBODY,0,-1,true);});
     d=obs_data_create();obs_data_set_int(d,"rtmw_person_confidence",35);obs_source_update(f,d);obs_data_release(d);
@@ -168,6 +189,7 @@ int main(int argc,char** argv){
         read(receiver,"unified/second",SIGHT_SNAPSHOT_BODY,33);});
     set_mode(f,"none");
     bool off=wait(source,[&]{return read(receiver,"unified/face",0)&&!inventory(receiver,"unified/face",SIGHT_SNAPSHOT_FACE)&&read(receiver,"unified/second",SIGHT_SNAPSHOT_BODY,33);});
+    bool off_backend=backend(f,"Tracking off");
     set_mode(second,"none");
     bool second_off=wait(source,[&]{return read(receiver,"unified/second",0);});
     obs_source_filter_remove(source,second);obs_source_release(second);
@@ -176,5 +198,5 @@ int main(int argc,char** argv){
     printf("SIGHT_UNIFIED_REAL props=%d face=%d list=%d body=%d body_list=%d hand=%d holistic=%d triple=%d object=%d rtmw=%d restore=%d off=%d\n",props,face,face_list,body,body_list,hand,holistic,triple,obj,rtmw,restore,off);
     obs_source_dec_showing(source);obs_source_filter_remove(source,f);obs_source_release(f);obs_source_release(receiver);obs_source_release(source);
     obs_wait_for_destroy_queue();obs_shutdown();
-    return !(face_extras&&no_extras&&extras_restored&&rejects&&reaccept&&multiple&&second_off&&native&&props&&face&&face_list&&body&&body_list&&hand&&holistic&&triple&&obj&&rtmw&&restore&&off);
+    return !(cpu_backend&&gpu_backend&&off_backend&&face_extras&&no_extras&&extras_restored&&rejects&&reaccept&&multiple&&second_off&&native&&props&&face&&face_list&&body&&body_list&&hand&&holistic&&triple&&obj&&rtmw&&restore&&off);
 }

@@ -13,7 +13,7 @@ VertData VSMain(VertData v) {
 float4 PSMain(VertData v):TARGET {
     float4 original=image.Sample(source_sample,v.uv);
     float mask=text_mask.Sample(mask_sample,v.uv).r;
-    if(view_mode==2)return float4(mask,mask,mask,1);
+    if(view_mode==2||view_mode==4)return float4(mask,mask,mask,1);
     if(mask<0.5)return original;
     if(view_mode==0)return float4(0,0,0,1);
     float2 cells=max(float2(1,1),image_size/max(1.0,block_px));

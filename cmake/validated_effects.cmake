@@ -106,6 +106,19 @@ if(SIGHT_ENABLE_OCR)
         target_compile_definitions(live-latent-lab-sight PRIVATE SIGHT_HAVE_OCR)
         set(SIGHT_HAVE_OCR TRUE)
         message(STATUS "Sight native Tesseract OCR enabled")
+        option(SIGHT_ENABLE_OCR_EDITOR "Enable Qt6 visual OCR region editor when available" ON)
+        if(SIGHT_ENABLE_OCR_EDITOR)
+            find_package(Qt6 QUIET COMPONENTS Widgets)
+            if(TARGET Qt6::Widgets)
+                target_sources(live-latent-lab-sight PRIVATE src/ui/ocr-region-editor.cpp)
+                target_link_libraries(live-latent-lab-sight PRIVATE Qt6::Widgets)
+                target_compile_definitions(live-latent-lab-sight PRIVATE SIGHT_HAVE_OCR_EDITOR)
+                set(SIGHT_HAVE_OCR_EDITOR TRUE)
+                message(STATUS "Sight Qt6 visual OCR editor enabled")
+            else()
+                message(STATUS "Sight OCR visual editor omitted: Qt6 Widgets unavailable")
+            endif()
+        endif()
     else()
         message(STATUS "Sight native OCR omitted: Tesseract development files unavailable")
     endif()
@@ -169,7 +182,12 @@ install(CODE [[
 
 install(TARGETS live-latent-lab-sight
     LIBRARY DESTINATION bin/64bit)
-# Bundle the exact ABI-tested legacy MediaPipe binary when supplied.
+# Test fixtures are not redistribution inputs by default. Explicit local
+# staging of an ABI-verified runtime is a separate user choice.
+option(SIGHT_STAGE_LOCAL_MEDIAPIPE "Stage a separately acquired local MediaPipe runtime (not redistribution approval)" OFF)
+if(SIGHT_STAGE_LOCAL_MEDIAPIPE AND NOT SIGHT_MEDIAPIPE_LIB)
+    message(FATAL_ERROR "SIGHT_STAGE_LOCAL_MEDIAPIPE requires SIGHT_MEDIAPIPE_LIB")
+endif()
 if(SIGHT_MEDIAPIPE_LIB)
     if(NOT EXISTS "${SIGHT_MEDIAPIPE_LIB}")
         message(FATAL_ERROR "Missing configured MediaPipe runtime")
@@ -182,11 +200,12 @@ if(SIGHT_MEDIAPIPE_LIB)
        NOT SIGHT_TASKS_LIBRARY_SHA256 STREQUAL "7ce8b23159d3fd4e8b727e35afbfb35f3d45d6bde1ec11cc01c316b3bf469f63")
         message(FATAL_ERROR "Unsupported MediaPipe binary ABI: ${SIGHT_TASKS_LIBRARY_SHA256}")
     endif()
-    install(FILES "${SIGHT_MEDIAPIPE_LIB}" DESTINATION bin/64bit)
-    # The header package supplies this license text; confirm rights to
-    # redistribute the separately obtained native library before publishing.
-    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/external/mediapipe-tasks-legacy/LICENSE"
-        DESTINATION data/licenses/mediapipe)
+    if(SIGHT_STAGE_LOCAL_MEDIAPIPE)
+        install(FILES "${SIGHT_MEDIAPIPE_LIB}" DESTINATION bin/64bit)
+        # Header package license does not establish binary redistribution rights.
+        install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/external/mediapipe-tasks-legacy/LICENSE"
+            DESTINATION data/licenses/mediapipe)
+    endif()
 endif()
 
 # The bundled ONNX Runtime is a separate third-party project. Keep its
@@ -206,10 +225,34 @@ install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/src/vrm/vendor/tinygltf-LICENSE"
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/src/vrm/vendor/stb-LICENSE"
     DESTINATION data/licenses/stb RENAME LICENSE)
 
-# The versioned ONNX Runtime binary is installed beside the plugin for
-# $ORIGIN resolution. Model weights never enter this package.
-install(FILES "${SIGHT_ORT_LIBRARY}" DESTINATION bin/64bit)
-install(DIRECTORY data/ DESTINATION data)
+# Install the runtime under the ELF name recorded by the linker, even
+# when a GPU distribution provides a differently named versioned file.
+get_filename_component(_sight_ort_real "${SIGHT_ORT_LIBRARY}" REALPATH)
+execute_process(COMMAND "${CMAKE_READELF}" -d "${_sight_ort_real}"
+    OUTPUT_VARIABLE _sight_ort_dynamic RESULT_VARIABLE _sight_ort_readelf)
+if(NOT _sight_ort_readelf EQUAL 0 OR
+   NOT _sight_ort_dynamic MATCHES "SONAME[^\n]*\\[([A-Za-z0-9_.-]+)\\]")
+    message(FATAL_ERROR "Cannot determine ONNX Runtime SONAME: ${_sight_ort_real}")
+endif()
+set(SIGHT_ORT_SONAME "${CMAKE_MATCH_1}")
+install(FILES "${_sight_ort_real}" DESTINATION bin/64bit RENAME "${SIGHT_ORT_SONAME}")
+foreach(_sight_ort_provider IN ITEMS shared cuda)
+    set(_sight_ort_provider_file "${SIGHT_ORT_LIB_DIR}/libonnxruntime_providers_${_sight_ort_provider}.so")
+    if(EXISTS "${_sight_ort_provider_file}")
+        install(FILES "${_sight_ort_provider_file}" DESTINATION bin/64bit)
+    endif()
+endforeach()
+# Explicit payload: never stage local assets just because they are under data/.
+install(FILES data/locale/en-US.ini DESTINATION data/locale)
+install(FILES data/presets/anime.json DESTINATION data/presets)
+install(FILES
+    data/sight-depth-camera.effect
+    data/sight-privacy-conceal.effect
+    data/sight-spatial-motion.effect
+    data/sight-subject-matte.effect
+    data/sight-text-obfuscation.effect
+    data/sight-tracking-overlay.effect
+    DESTINATION data)
 
 enable_testing()
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/litert_tracking.cmake")
@@ -271,6 +314,62 @@ if(SIGHT_XVFB_RUN)
     set_tests_properties(sight_subject_treatments_gpu PROPERTIES TIMEOUT 30)
 endif()
 
+
+# Respect an explicitly configured OBS image-source path and discover common
+# distro layouts; privacy checks must not assume /usr/local only.
+find_file(SIGHT_IMAGE_SOURCE_MODULE NAMES image-source.so
+    PATHS /usr/local/lib/obs-plugins
+          /usr/lib/x86_64-linux-gnu/obs-plugins
+          /usr/lib/obs-plugins
+          /usr/lib64/obs-plugins
+    NO_DEFAULT_PATH)
+
+add_executable(sight_semantic_detector_real_test tests/semantic_detector_real_test.cpp)
+target_include_directories(sight_semantic_detector_real_test PRIVATE src "${SIGHT_ORT_INCLUDE}")
+target_link_libraries(sight_semantic_detector_real_test PRIVATE "${SIGHT_ORT_LIBRARY}")
+set(_semantic_ort_dir "${CMAKE_CURRENT_BINARY_DIR}/semantic-test-runtime")
+file(MAKE_DIRECTORY "${_semantic_ort_dir}")
+file(CREATE_LINK "${_sight_ort_real}" "${_semantic_ort_dir}/${SIGHT_ORT_SONAME}" SYMBOLIC)
+foreach(_provider IN ITEMS shared cuda)
+    if(EXISTS "${SIGHT_ORT_LIB_DIR}/libonnxruntime_providers_${_provider}.so")
+        file(CREATE_LINK "${SIGHT_ORT_LIB_DIR}/libonnxruntime_providers_${_provider}.so"
+            "${_semantic_ort_dir}/libonnxruntime_providers_${_provider}.so" SYMBOLIC)
+    endif()
+endforeach()
+set_target_properties(sight_semantic_detector_real_test PROPERTIES BUILD_RPATH "${_semantic_ort_dir};${SIGHT_ORT_LIB_DIR}")
+set(SIGHT_SEMANTIC_TEST_MODEL "" CACHE FILEPATH "Optional local 14-class Nevermore small ONNX for real detector validation")
+set(SIGHT_SEMANTIC_TEST_RGBA "" CACHE FILEPATH "Optional local 512x512 RGBA portrait for semantic detector validation")
+if(EXISTS "${SIGHT_SEMANTIC_TEST_MODEL}" AND EXISTS "${SIGHT_SEMANTIC_TEST_RGBA}")
+    add_test(NAME sight_semantic_real_inference COMMAND sight_semantic_detector_real_test
+        "${SIGHT_SEMANTIC_TEST_MODEL}" "${SIGHT_SEMANTIC_TEST_RGBA}")
+endif()
+
+set(SIGHT_SEMANTIC_TEST_SMALL_FP16 "" CACHE FILEPATH "Optional local Nevermore small FP16 ONNX")
+set(SIGHT_SEMANTIC_TEST_TINY_FP16 "" CACHE FILEPATH "Optional local Nevermore tiny FP16 ONNX")
+if(EXISTS "${SIGHT_SEMANTIC_TEST_RGBA}")
+    foreach(_variant IN ITEMS SMALL TINY)
+        if(EXISTS "${SIGHT_SEMANTIC_TEST_${_variant}_FP16}")
+            if(_variant STREQUAL "SMALL")
+                set(_classes 14)
+            else()
+                set(_classes 10)
+            endif()
+            string(TOLOWER "${_variant}" _suffix)
+            add_test(NAME sight_semantic_${_suffix}_fp16_inference
+                COMMAND sight_semantic_detector_real_test
+                    "${SIGHT_SEMANTIC_TEST_${_variant}_FP16}" "${SIGHT_SEMANTIC_TEST_RGBA}" "${_classes}")
+        endif()
+    endforeach()
+endif()
+
+add_executable(sight_semantic_temporal_test tests/semantic_temporal_test.cpp)
+target_include_directories(sight_semantic_temporal_test PRIVATE src)
+add_test(NAME sight_semantic_temporal_unit COMMAND sight_semantic_temporal_test)
+
+add_executable(sight_semantic_regions_test tests/semantic_regions_test.cpp)
+target_include_directories(sight_semantic_regions_test PRIVATE src)
+add_test(NAME sight_semantic_regions_unit COMMAND sight_semantic_regions_test)
+
 add_executable(sight_privacy_coverage_test tests/privacy_coverage_test.cpp)
 target_include_directories(sight_privacy_coverage_test PRIVATE src)
 add_test(NAME sight_privacy_coverage_unit COMMAND sight_privacy_coverage_test)
@@ -283,6 +382,35 @@ find_file(SIGHT_IMAGE_SOURCE_MODULE NAMES image-source.so
           /usr/lib/obs-plugins
           /usr/lib64/obs-plugins
     NO_DEFAULT_PATH)
+
+set(SIGHT_SEMANTIC_TEST_IMAGE "" CACHE FILEPATH "Optional local portrait PNG for semantic OBS validation")
+if(TARGET sight_privacy_text_obs_smoke AND SIGHT_IMAGE_SOURCE_MODULE AND
+   EXISTS "${SIGHT_SEMANTIC_TEST_MODEL}" AND EXISTS "${SIGHT_SEMANTIC_TEST_IMAGE}")
+    add_test(NAME sight_semantic_obs_integration
+        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_obs_sight_render.sh"
+            "$<TARGET_FILE:sight_privacy_text_obs_smoke>"
+            "$<TARGET_FILE:live-latent-lab-sight>"
+            "${SIGHT_SEMANTIC_TEST_MODEL}" "${CMAKE_CURRENT_SOURCE_DIR}/data")
+    set_tests_properties(sight_semantic_obs_integration PROPERTIES TIMEOUT 45
+        ENVIRONMENT "SIGHT_SMOKE_SEMANTIC_MODEL=${SIGHT_SEMANTIC_TEST_MODEL};SIGHT_SMOKE_EFFECT=sight_privacy_v2_filter;SIGHT_SMOKE_WIDTH=512;SIGHT_SMOKE_HEIGHT=512;SIGHT_SMOKE_IMAGE_PLUGIN=${SIGHT_IMAGE_SOURCE_MODULE};SIGHT_SMOKE_IMAGE_FILE=${SIGHT_SEMANTIC_TEST_IMAGE};SIGHT_SMOKE_HOLD_MS=2500;SIGHT_SMOKE_PRIVACY_EXPECT_MASKED=1"
+        ENVIRONMENT_MODIFICATION "LD_LIBRARY_PATH=path_list_prepend:${_semantic_ort_dir}")
+    foreach(_mode IN ITEMS buffered missing_model)
+        add_test(NAME sight_semantic_obs_${_mode}
+            COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_obs_sight_render.sh"
+                "$<TARGET_FILE:sight_privacy_text_obs_smoke>"
+                "$<TARGET_FILE:live-latent-lab-sight>"
+                "${SIGHT_SEMANTIC_TEST_MODEL}" "${CMAKE_CURRENT_SOURCE_DIR}/data")
+        if(_mode STREQUAL "buffered")
+            set(_semantic_env "SIGHT_SMOKE_SEMANTIC_MODEL=${SIGHT_SEMANTIC_TEST_MODEL};SIGHT_SMOKE_PRIVACY_EXPECT_MASKED=1")
+        else()
+            set(_semantic_env "SIGHT_SMOKE_SEMANTIC_MODEL=${CMAKE_CURRENT_BINARY_DIR}/semantic-intentionally-absent/model.onnx;SIGHT_SMOKE_SEMANTIC_EXPECT_SLATE=1")
+        endif()
+        set_tests_properties(sight_semantic_obs_${_mode} PROPERTIES TIMEOUT 45
+            ENVIRONMENT "${_semantic_env};SIGHT_SMOKE_SEMANTIC_BUFFERED=1;SIGHT_SMOKE_EFFECT=sight_privacy_v2_filter;SIGHT_SMOKE_WIDTH=512;SIGHT_SMOKE_HEIGHT=512;SIGHT_SMOKE_IMAGE_PLUGIN=${SIGHT_IMAGE_SOURCE_MODULE};SIGHT_SMOKE_IMAGE_FILE=${SIGHT_SEMANTIC_TEST_IMAGE};SIGHT_SMOKE_HOLD_MS=2500"
+            ENVIRONMENT_MODIFICATION "LD_LIBRARY_PATH=path_list_prepend:${_semantic_ort_dir}")
+    endforeach()
+
+endif()
 
 # Real face CNN + GPU-filter smoke tests using a pinned local 512x512 reference.
 if(SIGHT_MEDIAPIPE_TEST_RGBA AND SIGHT_MEDIAPIPE_FACE_MODEL AND SIGHT_XVFB_RUN)
@@ -677,6 +805,13 @@ target_link_libraries(sight_animegan_model_test PRIVATE "${SIGHT_ORT_LIBRARY}")
 set_target_properties(sight_animegan_model_test PROPERTIES
     BUILD_RPATH "${SIGHT_ORT_LIB_DIR}")
 
+# Explicitly exercise the no-ONNX build's unavailable-backend contract.
+add_executable(sight_segmentation_unavailable_test
+    tests/segmentation_unavailable_test.cpp src/core/segmentation_processor.cpp)
+target_include_directories(sight_segmentation_unavailable_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src" "${SIGHT_OBS_INCLUDE}")
+add_test(NAME sight_segmentation_unavailable COMMAND sight_segmentation_unavailable_test)
+
 set(SIGHT_U2NET_MODEL "" CACHE FILEPATH
     "Optional local U2Net ONNX model for real-model and OBS matte tests")
 set(SIGHT_U2NET_TEST_IMAGE "" CACHE FILEPATH
@@ -707,6 +842,11 @@ if(SIGHT_U2NET_MODEL)
         BUILD_RPATH "${SIGHT_ORT_LIB_DIR}")
 endif()
 
+add_executable(sight_inference_health_test tests/inference-health-test.cpp)
+add_test(NAME sight_inference_health_unit COMMAND sight_inference_health_test)
+add_executable(sight_flow_matte_test tests/flow-matte-test.cpp)
+target_include_directories(sight_flow_matte_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+add_test(NAME sight_flow_matte_unit COMMAND sight_flow_matte_test)
 add_executable(sight_depth_temporal_test tests/depth_temporal_policy_test.cpp)
 target_include_directories(sight_depth_temporal_test PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -717,6 +857,17 @@ set(SIGHT_DEPTH_MODEL "" CACHE FILEPATH
 if(SIGHT_DEPTH_MODEL)
     if(NOT EXISTS "${SIGHT_DEPTH_MODEL}")
         message(FATAL_ERROR "Depth model missing: ${SIGHT_DEPTH_MODEL}")
+    endif()
+    if(SIGHT_XVFB_RUN)
+        add_executable(sight_backend_status_test tests/verify-backend-status.cpp)
+        target_include_directories(sight_backend_status_test PRIVATE "${SIGHT_OBS_INCLUDE}")
+        target_link_libraries(sight_backend_status_test PRIVATE "${SIGHT_OBS_LIBRARY}" pthread)
+        add_test(NAME sight_backend_status_real_obs
+            COMMAND "${SIGHT_XVFB_RUN}" -a $<TARGET_FILE:sight_backend_status_test>
+                $<TARGET_FILE:live-latent-lab-sight> "${CMAKE_CURRENT_SOURCE_DIR}/data" "${SIGHT_DEPTH_MODEL}")
+        set_tests_properties(sight_backend_status_real_obs PROPERTIES TIMEOUT 35
+            ENVIRONMENT "SIGHT_ONNX_DEVICE=cpu"
+            ENVIRONMENT_MODIFICATION "LD_LIBRARY_PATH=path_list_prepend:${CMAKE_CURRENT_BINARY_DIR}/semantic-test-runtime")
     endif()
     add_executable(sight_depth_model_test
         tests/onnx_depth_inference_test.cpp src/core/onnx_depth_processor.cpp)
@@ -747,6 +898,10 @@ if(SIGHT_ANIMEGAN_MODEL)
                 PRIVATE "${SIGHT_OBS_INCLUDE}")
             target_link_libraries(sight_obs_effect_render_smoke
                 PRIVATE "${SIGHT_OBS_LIBRARY}" pthread)
+            if(SIGHT_HAVE_OCR_EDITOR)
+                target_link_libraries(sight_obs_effect_render_smoke PRIVATE Qt6::Widgets)
+                target_compile_definitions(sight_obs_effect_render_smoke PRIVATE SIGHT_HAVE_OCR_EDITOR)
+            endif()
             foreach(case IN ITEMS square landscape portrait misaligned)
                 add_test(NAME sight_animegan_obs_${case}
                     COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_obs_sight_render.sh"
@@ -772,6 +927,99 @@ if(SIGHT_ANIMEGAN_MODEL)
             set_tests_properties(sight_animegan_obs_high_detail PROPERTIES
                 TIMEOUT 40
                 ENVIRONMENT "SIGHT_SMOKE_WIDTH=750;SIGHT_SMOKE_HEIGHT=1000;SIGHT_SMOKE_SKETCH_SIZE=768")
+            add_test(NAME sight_animegan_obs_1024_detail
+                COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_obs_sight_render.sh"
+                    "$<TARGET_FILE:sight_obs_effect_render_smoke>"
+                    "$<TARGET_FILE:live-latent-lab-sight>"
+                    "${SIGHT_ANIMEGAN_MODEL}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/data")
+            set_tests_properties(sight_animegan_obs_1024_detail PROPERTIES
+                TIMEOUT 70
+                ENVIRONMENT "SIGHT_SMOKE_WIDTH=750;SIGHT_SMOKE_HEIGHT=1000;SIGHT_SMOKE_SKETCH_SIZE=1024")
+            add_test(NAME sight_animegan_obs_capture_gate
+                COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_obs_sight_render.sh"
+                    "$<TARGET_FILE:sight_obs_effect_render_smoke>"
+                    "$<TARGET_FILE:live-latent-lab-sight>"
+                    "${SIGHT_ANIMEGAN_MODEL}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/data")
+            set_tests_properties(sight_animegan_obs_capture_gate PROPERTIES
+                TIMEOUT 40
+                ENVIRONMENT "SIGHT_SMOKE_WIDTH=512;SIGHT_SMOKE_HEIGHT=512;SIGHT_SMOKE_CAPTURE_GATE=1")
+
+            # Explicit local weights and portrait fixture: no downloads in CTest.
+            set(SIGHT_CUTOUT_PORTRAIT "" CACHE FILEPATH "512x512 portrait fixture for cutout model qualification")
+            set(SIGHT_U2NETP_MODEL "" CACHE FILEPATH "Local U2NetP ONNX")
+            set(SIGHT_MODNET_MODEL "" CACHE FILEPATH "Local Xenova MODNet float32 ONNX")
+            set(SIGHT_LONGPIPE_MODEL "" CACHE FILEPATH "Local Longpipe refined ONNX")
+            set(SIGHT_LONGPIPE_FLOW_MODEL "" CACHE FILEPATH "Matching local Longpipe optical-flow ONNX")
+            set(SIGHT_LONGPIPE_FLOW_MOVED_IMAGE "" CACHE FILEPATH "Optional translated 512x512 portrait fixture")
+            if(SIGHT_U2NETP_MODEL)
+                add_executable(sight_cutout_device_test tests/verify-cutout-device.cpp)
+                target_include_directories(sight_cutout_device_test PRIVATE "${SIGHT_OBS_INCLUDE}")
+                target_link_libraries(sight_cutout_device_test PRIVATE "${SIGHT_OBS_LIBRARY}" pthread)
+                add_test(NAME sight_cutout_device_real_obs
+                    COMMAND "${SIGHT_XVFB_RUN}" -a $<TARGET_FILE:sight_cutout_device_test>
+                        $<TARGET_FILE:live-latent-lab-sight> "${CMAKE_CURRENT_SOURCE_DIR}/data" "${SIGHT_U2NETP_MODEL}" cpu)
+                set_tests_properties(sight_cutout_device_real_obs PROPERTIES TIMEOUT 60
+                    ENVIRONMENT_MODIFICATION "LD_LIBRARY_PATH=path_list_prepend:${CMAKE_CURRENT_BINARY_DIR}/semantic-test-runtime")
+            endif()
+            if(SIGHT_CUTOUT_PORTRAIT)
+                find_file(SIGHT_CUTOUT_IMAGE_MODULE NAMES image-source.so
+                    PATHS /usr/local/lib/obs-plugins /usr/lib/x86_64-linux-gnu/obs-plugins NO_DEFAULT_PATH)
+                if(NOT EXISTS "${SIGHT_CUTOUT_PORTRAIT}" OR NOT SIGHT_CUTOUT_IMAGE_MODULE)
+                    message(FATAL_ERROR "Cutout portrait qualification requires the fixture and OBS image-source")
+                endif()
+                foreach(family IN ITEMS U2NETP MODNET LONGPIPE)
+                    if(SIGHT_${family}_MODEL)
+                        if(NOT EXISTS "${SIGHT_${family}_MODEL}")
+                            message(FATAL_ERROR "Missing cutout model: ${SIGHT_${family}_MODEL}")
+                        endif()
+                        if(family STREQUAL "U2NETP")
+                            set(family_id 0)
+                        elseif(family STREQUAL "MODNET")
+                            set(family_id 1)
+                        else()
+                            set(family_id 2)
+                        endif()
+                        string(TOLOWER "${family}" family_name)
+                        add_test(NAME sight_cutout_${family_name}_real_obs
+                            COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_obs_sight_render.sh"
+                                "$<TARGET_FILE:sight_obs_effect_render_smoke>"
+                                "$<TARGET_FILE:live-latent-lab-sight>"
+                                "${SIGHT_${family}_MODEL}" "${CMAKE_CURRENT_SOURCE_DIR}/data")
+                        set_tests_properties(sight_cutout_${family_name}_real_obs PROPERTIES TIMEOUT 60
+                            ENVIRONMENT "SIGHT_ONNX_DEVICE=cpu;SIGHT_SMOKE_EXPECT_ONNX_DEVICE=cpu;SIGHT_SMOKE_WIDTH=512;SIGHT_SMOKE_HEIGHT=512;SIGHT_SMOKE_EFFECT=sight_u2net_filter;SIGHT_SMOKE_CUTOUT_MODEL=${family_id};SIGHT_SMOKE_CUTOUT_SHARED=1;SIGHT_SMOKE_IMAGE_PLUGIN=${SIGHT_CUTOUT_IMAGE_MODULE};SIGHT_SMOKE_IMAGE_FILE=${SIGHT_CUTOUT_PORTRAIT};SIGHT_SMOKE_EXPECT_FOREGROUND=1")
+                    endif()
+                endforeach()
+                if(SIGHT_LONGPIPE_MODEL AND SIGHT_LONGPIPE_FLOW_MODEL)
+                    if(NOT EXISTS "${SIGHT_LONGPIPE_FLOW_MODEL}")
+                        message(FATAL_ERROR "Missing Longpipe flow model")
+                    endif()
+                    foreach(kind IN ITEMS flow flow_mismatch)
+                        if(kind STREQUAL "flow")
+                            set(flow_file "${SIGHT_LONGPIPE_FLOW_MODEL}")
+                            set(expected_flow "stationary stabilization")
+                        else()
+                            set(flow_file "${SIGHT_LONGPIPE_MODEL}")
+                            set(expected_flow "Flow unavailable")
+                        endif()
+                        add_test(NAME sight_cutout_longpipe_${kind}_real_obs
+                            COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_obs_sight_render.sh"
+                                "$<TARGET_FILE:sight_obs_effect_render_smoke>"
+                                "$<TARGET_FILE:live-latent-lab-sight>"
+                                "${SIGHT_LONGPIPE_MODEL}" "${CMAKE_CURRENT_SOURCE_DIR}/data")
+                        set_tests_properties(sight_cutout_longpipe_${kind}_real_obs PROPERTIES TIMEOUT 60
+                            ENVIRONMENT "SIGHT_ONNX_DEVICE=cpu;SIGHT_SMOKE_EXPECT_ONNX_DEVICE=cpu;SIGHT_SMOKE_WIDTH=512;SIGHT_SMOKE_HEIGHT=512;SIGHT_SMOKE_EFFECT=sight_u2net_filter;SIGHT_SMOKE_CUTOUT_MODEL=2;SIGHT_SMOKE_CUTOUT_FLOW=${flow_file};SIGHT_SMOKE_CUTOUT_FLOW_EXPECT=${expected_flow};SIGHT_SMOKE_CUTOUT_SHARED=1;SIGHT_SMOKE_IMAGE_PLUGIN=${SIGHT_CUTOUT_IMAGE_MODULE};SIGHT_SMOKE_IMAGE_FILE=${SIGHT_CUTOUT_PORTRAIT};SIGHT_SMOKE_EXPECT_FOREGROUND=1;SIGHT_SMOKE_HOLD_MS=1800")
+                    endforeach()
+                    if(SIGHT_LONGPIPE_FLOW_MOVED_IMAGE)
+                        if(NOT EXISTS "${SIGHT_LONGPIPE_FLOW_MOVED_IMAGE}")
+                            message(FATAL_ERROR "Missing translated portrait fixture")
+                        endif()
+                        set_property(TEST sight_cutout_longpipe_flow_real_obs APPEND PROPERTY
+                            ENVIRONMENT "SIGHT_SMOKE_CUTOUT_FLOW_MOVE=${SIGHT_LONGPIPE_FLOW_MOVED_IMAGE}")
+                    endif()
+                endif()
+            endif()
 
             if(SIGHT_U2NET_MODEL)
                 add_test(NAME sight_u2net_obs_cutout
@@ -843,7 +1091,7 @@ if(SIGHT_ANIMEGAN_MODEL)
                 set_tests_properties(sight_depth_obs_expired_passthrough PROPERTIES
                     TIMEOUT 90
                     ENVIRONMENT
-                      "SIGHT_SMOKE_WIDTH=128;SIGHT_SMOKE_HEIGHT=128;SIGHT_SMOKE_EFFECT=sight_depth_filter;SIGHT_SMOKE_DEPTH_EDGE=252;SIGHT_SMOKE_DEPTH_MAX_AGE=2;SIGHT_SMOKE_DEPTH_VERIFY_EXPIRY=2900")
+                      "SIGHT_SMOKE_WIDTH=128;SIGHT_SMOKE_HEIGHT=128;SIGHT_SMOKE_EFFECT=sight_depth_filter;SIGHT_SMOKE_DEPTH_EDGE=252;SIGHT_SMOKE_DEPTH_MAX_AGE=2;SIGHT_SMOKE_DEPTH_VERIFY_EXPIRY=6500")
                 # If the OBS source geometry changes, old depth must not
                 # stretch across the resized source before new inference.
                 add_test(NAME sight_depth_obs_resize_passthrough
@@ -1224,6 +1472,13 @@ if(SIGHT_HAVE_OCR AND SIGHT_OCR_TESSDATA_DIR AND
             obs "$<TARGET_FILE:sight_obs_effect_render_smoke>" "$<TARGET_FILE:live-latent-lab-sight>"
             "${SIGHT_OCR_TESSDATA_DIR}" "${SIGHT_IMAGE_SOURCE_MODULE}")
         set_tests_properties(sight_text_obfuscation_obs PROPERTIES TIMEOUT 60)
+        if(SIGHT_HAVE_OCR_EDITOR)
+            add_test(NAME sight_ocr_editor_obs COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_text_ocr.sh"
+                obs "$<TARGET_FILE:sight_obs_effect_render_smoke>" "$<TARGET_FILE:live-latent-lab-sight>"
+                "${SIGHT_OCR_TESSDATA_DIR}" "${SIGHT_IMAGE_SOURCE_MODULE}")
+            set_tests_properties(sight_ocr_editor_obs PROPERTIES TIMEOUT 90
+                ENVIRONMENT "SIGHT_SMOKE_OCR_EDITOR=1")
+        endif()
     endif()
 endif()
 
