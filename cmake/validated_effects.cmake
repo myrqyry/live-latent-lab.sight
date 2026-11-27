@@ -45,6 +45,19 @@ find_library(SIGHT_ORT_LIBRARY
     NAMES onnxruntime libonnxruntime.so.1.17.1
     REQUIRED PATHS "${SIGHT_ORT_ROOT}/lib" NO_DEFAULT_PATH)
 get_filename_component(SIGHT_ORT_LIB_DIR "${SIGHT_ORT_LIBRARY}" DIRECTORY)
+# Explicit split SDKs can be used to test ABI compatibility locally, but
+# a package must use headers, library and notices from one distribution.
+get_filename_component(_sight_ort_root_real "${SIGHT_ORT_ROOT}" REALPATH)
+get_filename_component(_sight_ort_library_real "${SIGHT_ORT_LIBRARY}" REALPATH)
+get_filename_component(_sight_ort_include_real "${SIGHT_ORT_INCLUDE}" REALPATH)
+string(FIND "${_sight_ort_library_real}" "${_sight_ort_root_real}/lib/" _sight_ort_library_in_root)
+string(FIND "${_sight_ort_include_real}/" "${_sight_ort_root_real}/include/" _sight_ort_include_in_root)
+set(SIGHT_ORT_SPLIT_SDK FALSE)
+if(NOT _sight_ort_library_in_root EQUAL 0 OR NOT _sight_ort_include_in_root EQUAL 0)
+    set(SIGHT_ORT_SPLIT_SDK TRUE)
+    message(WARNING "Split ONNX Runtime SDK: local test builds only; staging disabled")
+endif()
+
 
 add_library(live-latent-lab-sight MODULE
     src/plugin-main.cpp
@@ -181,6 +194,10 @@ install(CODE [[
 ]])
 
 # Original Sight license and corresponding-source notice.
+if(SIGHT_ORT_SPLIT_SDK)
+    install(CODE [[message(FATAL_ERROR
+        "Sight refuses staging a split ONNX Runtime SDK. Supply a single matching SIGHT_ORT_ROOT distribution and its notices in a fresh build directory.")]])
+endif()
 install(FILES LICENSE LICENSING.md DESTINATION data/licenses/sight)
 install(TARGETS live-latent-lab-sight
     LIBRARY DESTINATION bin/64bit)

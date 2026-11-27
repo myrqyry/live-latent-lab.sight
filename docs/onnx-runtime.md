@@ -58,3 +58,8 @@ Changing ONNX Runtime versions, providers or platforms needs an actual
 build, model-backed regression coverage and licensing review. Sight has
 only been qualified with the pinned Linux candidate described here; see
 [release readiness](release-readiness.md) for remaining gates.
+
+A split header/library configuration remains available for local ABI
+experiments, but installation/staging is rejected before any package file
+is written. Supply a single complete distribution via `SIGHT_ORT_ROOT`
+with its matching headers, library and notices in a fresh build directory.

@@ -58,3 +58,18 @@ matte tests. No automatic model downloads, runtime installation or
 public release qualification were performed. The installed provider
 library path configuration is machine-specific; a distribution must
 supply its matching CUDA/cuDNN dependencies.
+
+## Curated CUDA validation and package boundary (2026-11-26)
+
+Actual curated OBS inference passed with the local ONNX Runtime GPU 1.30.0
+library, matching CUDA 13/cuDNN dependencies and the older 1.17.1 header
+API. Both Longpipe XS matte and flow sessions explicitly reported CUDA.
+The shared matte ABI, stationary stabilization, source movement, motion
+compensation and restored position passed on the RTX 2070 SUPER.
+This split SDK is for local qualification only. CMake now refuses to stage
+such a configuration before writing any files: headers, shared library
+and notices must come from one matching `SIGHT_ORT_ROOT` distribution.
+The separately acquired CUDA and cuDNN runtime dependencies must be visible
+on the target system; they are not bundled by Sight. Use a fresh build
+folder when changing SDKs, and verify actual providers and model-backed
+inference. This is not a portable GPU installer certification.

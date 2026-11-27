@@ -2,6 +2,7 @@
 """Release-safety regression tests: no assumptions about user's OBS install."""
 import pathlib
 import re
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -57,6 +58,27 @@ class ReleaseSafetyTests(unittest.TestCase):
                 "Sight refuses system-wide installation",
                 attempted.stdout + attempted.stderr,
             )
+
+    def test_split_runtime_can_build_but_cannot_stage_mismatched_notices(self):
+        with tempfile.TemporaryDirectory(prefix="sight-split-ort-") as tmp:
+            root = pathlib.Path(tmp)
+            build = root / "build"
+            alternate = root / "libonnxruntime.so.1.17.1"
+            shutil.copyfile(ROOT / "external/onnxruntime/lib/libonnxruntime.so.1.17.1", alternate)
+            configured = subprocess.run(
+                ["cmake", "-S", str(ROOT), "-B", str(build),
+                 f"-DSIGHT_ORT_LIBRARY={alternate}"],
+                capture_output=True, text=True, timeout=90,
+            )
+            self.assertEqual(configured.returncode, 0, configured.stderr[-2000:])
+            prefix = root / "stage"
+            attempted = subprocess.run(
+                ["cmake", "--install", str(build), "--prefix", str(prefix)],
+                capture_output=True, text=True, timeout=30,
+            )
+            self.assertNotEqual(attempted.returncode, 0)
+            self.assertIn("Sight refuses staging a split ONNX Runtime SDK", attempted.stdout + attempted.stderr)
+            self.assertFalse(prefix.exists())
 
     def test_default_prefix_is_guarded_at_install_time(self):
         # Build not required: refusal must happen before any install writes.

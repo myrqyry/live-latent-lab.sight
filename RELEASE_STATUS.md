@@ -174,3 +174,13 @@ licenses are unchanged; this does not clear dependency or model distribution.
   machine, Windows, macOS or high-resolution webcam certification.
 - Receipt: docs/qualification/source-readiness-20261126.json. Previous
   statements excluding the neural worker are historical and superseded.
+
+## CUDA staging safeguard
+
+The curated 1.30.0 local split-SDK GPU build passed Longpipe XS matte and
+flow CUDA sessions, shared matte ABI and real moving/restored OBS pixels.
+It now cannot be staged with the older SDK notices: CMake rejects mixed
+header/library roots before any install write. The red/green test and all
+five release-safety cases passed; the actual split CUDA install was rejected
+and the ordinary optional stage still passes. A matched portable GPU
+SDK/runtime distribution remains a separate qualification task.
