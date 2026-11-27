@@ -180,6 +180,8 @@ install(CODE [[
     endif()
 ]])
 
+# Original Sight license and corresponding-source notice.
+install(FILES LICENSE LICENSING.md DESTINATION data/licenses/sight)
 install(TARGETS live-latent-lab-sight
     LIBRARY DESTINATION bin/64bit)
 # Test fixtures are not redistribution inputs by default. Explicit local

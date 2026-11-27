@@ -114,7 +114,7 @@ clearance. The two binary blobs are the pinned ONNX Runtime ELF and a
 compressed OCR fixture; libfacedetection includes embedded CNN arrays.
 Verified EnTT v3.16.0 header against upstream and restored its MIT notice.
 The original ONNX Runtime v1.17.1 upstream archive could not be fetched
-(HTTP 404); exact origin remains a release gate. Original plugin license,
+(HTTP 404); exact origin remains a release gate. Original plugin license was subsequently selected as GPL-3.0-only;
 source provenance, clean-machine qualification and experimental feature
 promotion remain open. See [audit receipt](docs/qualification/curated-release-audit-20261126.json).
 No visibility change or publication.
@@ -137,3 +137,9 @@ runtime or separately acquired model weights. Not a clean-machine source
 build of SD.cpp or redistribution approval. The older unvalidated legacy
 build and native neural-rendering worker are not promoted; neural model
 provenance must be resolved separately. See docs/native-diffusion.md.
+
+## Original-code licensing
+
+The project owner selected GPL-3.0-only. The full license and scope notice
+are included in source and local staged packages. Existing third-party
+licenses are unchanged; this does not clear dependency or model distribution.

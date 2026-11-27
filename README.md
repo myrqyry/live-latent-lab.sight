@@ -138,8 +138,8 @@ See [release status](RELEASE_STATUS.md) for exact evidence and limitations.
 
 ## Release gate
 
-Public distribution is not cleared. The original README declared
-GPL-2.0, but a top-level original-code license has not yet been confirmed.
-Runtime notices, model terms, clean-machine acceptance and package
-compatibility must be reviewed before publication. Windows and macOS
+Public distribution is not yet cleared. Sight’s original code is licensed
+under [GPL-3.0-only](LICENSE). See [licensing and third-party boundaries](LICENSING.md).
+Runtime provenance, model terms, clean-machine acceptance and package
+compatibility must still be reviewed before publication. Windows and macOS
 are not certified.

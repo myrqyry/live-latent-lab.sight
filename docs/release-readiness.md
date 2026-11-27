@@ -81,10 +81,10 @@ See docs/object-tracking-mediapipe.md.
 
 ## Still blocking public release
 
-1. **Plugin code license:** choose and add a top-level LICENSE for Sight's
-   original code after checking copyright ownership and all source origins.
-   The licenses of vendored dependencies do not grant rights to Sight itself.
-   Do not select MIT, Apache, GPL, or another license on the user's behalf.
+1. **Original-code license selected:** GPL-3.0-only, with the full license
+   in [LICENSE](../LICENSE) and scope in [LICENSING.md](../LICENSING.md).
+   Third-party source-origin, ownership and redistribution review remain
+   independent gates; existing third-party licenses are unchanged.
 2. **Binary redistribution:** review provenance and redistribution terms
    for the tested legacy and official [MediaPipe 1.2.3](mediapipe-1.2.3.md)
    C runtimes. Matching hashes establish binary compatibility, not permission
