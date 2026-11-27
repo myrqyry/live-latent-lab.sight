@@ -3,6 +3,7 @@
 #include <onnxruntime_cxx_api.h>
 #include <algorithm>
 #include <cstdlib>
+#include <filesystem>
 #include <memory>
 #include <string_view>
 #include <stdexcept>
@@ -18,6 +19,7 @@ inline std::unique_ptr<Ort::Session> open_onnx_session(
     bool prefer_gpu = true, const char **configured_provider = nullptr,
     bool require_cuda = false)
 {
+    const auto native_path=std::filesystem::u8path(path);
     if(configured_provider)*configured_provider=nullptr;
     const char *requested = std::getenv("SIGHT_ONNX_DEVICE");
     const bool cpu_override=requested && std::string_view(requested) == "cpu";
@@ -34,7 +36,7 @@ inline std::unique_ptr<Ort::Session> open_onnx_session(
                 // Avoid expensive exhaustive tuning as models load or input sizes change.
                 cuda.cudnn_conv_algo_search = OrtCudnnConvAlgoSearchHeuristic;
                 options.AppendExecutionProvider_CUDA(cuda);
-                auto session = std::make_unique<Ort::Session>(env, path, options);
+                auto session = std::make_unique<Ort::Session>(env, native_path.c_str(), options);
 #ifdef SIGHT_ANIMEGAN_ONLY
                 sight_logf(LOG_INFO, "[Sight/ONNX] SIGHT_ONNX_CUDA_4BE7: CUDA session ready for %s", path);
 #endif
@@ -49,7 +51,7 @@ inline std::unique_ptr<Ort::Session> open_onnx_session(
         }
     }
     if(require_cuda)throw std::runtime_error("CUDA execution provider unavailable");
-    auto session = std::make_unique<Ort::Session>(env, path, cpu_options);
+    auto session = std::make_unique<Ort::Session>(env, native_path.c_str(), cpu_options);
 #ifdef SIGHT_ANIMEGAN_ONLY
     sight_logf(LOG_INFO, "[Sight/ONNX] CPU session ready for %s", path);
 #endif

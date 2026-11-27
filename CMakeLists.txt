@@ -5,6 +5,11 @@ project(live-latent-lab-sight VERSION 0.3.0 LANGUAGES C CXX)
 # build remains available for development of the other effects.
 option(SIGHT_ENABLE_UNVERIFIED_EFFECTS
     "Build and register the legacy experimental effects (requires LiteRT and SD)" OFF)
+option(SIGHT_NATIVE_BASELINE "Build portable CPU/ONNX baseline with native OBS SDK" OFF)
+if(NOT SIGHT_ENABLE_UNVERIFIED_EFFECTS AND (SIGHT_NATIVE_BASELINE OR WIN32 OR APPLE))
+    include(cmake/native-baseline.cmake)
+    return()
+endif()
 if(NOT SIGHT_ENABLE_UNVERIFIED_EFFECTS)
     include(cmake/validated_effects.cmake)
     include(cmake/native_sd_generator.cmake)

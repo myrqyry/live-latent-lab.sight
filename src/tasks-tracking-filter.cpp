@@ -5,7 +5,7 @@
 #include <callback/proc.h>
 #include <graphics/graphics.h>
 #include <util/platform.h>
-#include <dlfcn.h>
+
 
 #include <algorithm>
 #include <array>
@@ -99,11 +99,10 @@ std::string models_dir() {
     std::filesystem::create_directories(folder,ec);
     return !ec && std::filesystem::is_directory(folder)?folder:std::string{};
 }
-std::string own_library_path() {
-    Dl_info info{};
-    if(!dladdr(reinterpret_cast<void*>(&own_library_path),&info)||!info.dli_fname)
-        return {};
-    return (std::filesystem::path(info.dli_fname).parent_path()/"libmediapipe.so").string();
+std::filesystem::path own_library_path() {
+    auto* module=obs_current_module();
+    const char* path=module?obs_get_module_binary_path(module):nullptr;
+    return path?std::filesystem::u8path(path):std::filesystem::path{};
 }
 std::pair<uint32_t,uint32_t> capture_dimensions(uint32_t w,uint32_t h,uint32_t longest) {
     if(!w||!h)return {0,0};
@@ -1037,8 +1036,7 @@ void defaults_face(obs_data_t *settings) {
     obs_data_set_default_string(settings,MODEL_PATH,
         dir.empty()?"":(dir+"/face_landmarker.task").c_str());
     const auto runtime=sight::tracking_runtime_default(
-        std::filesystem::path(own_library_path()).parent_path() /
-        "live-latent-lab-sight.so");
+        own_library_path());
     obs_data_set_default_string(settings,RUNTIME_PATH,runtime.c_str());
     obs_data_set_default_int(settings,EDGE,512);
     obs_data_set_default_int(settings,CADENCE,2);
@@ -1071,8 +1069,7 @@ void defaults_objects(obs_data_t *settings) {
     obs_data_set_default_string(settings,MODEL_PATH,
         dir.empty()?"":(dir+"/efficientdet_lite0.tflite").c_str());
     const auto runtime=sight::holistic_runtime_default(
-        std::filesystem::path(own_library_path()).parent_path() /
-        "live-latent-lab-sight.so");
+        own_library_path());
     obs_data_set_default_string(settings,RUNTIME_PATH,runtime.c_str());
     obs_data_set_default_int(settings,EDGE,512);
     obs_data_set_default_int(settings,CADENCE,2);
@@ -1090,8 +1087,7 @@ void defaults_holistic(obs_data_t *settings) {
     // OBS plugin binary. A fresh filter should not make its user browse for
     // a dependency that is already present. Never select the legacy ABI.
     const auto runtime=sight::holistic_runtime_default(
-        std::filesystem::path(own_library_path()).parent_path() /
-        "live-latent-lab-sight.so");
+        own_library_path());
     obs_data_set_default_string(settings,RUNTIME_PATH,runtime.c_str());
     obs_data_set_default_bool(settings,DRAW_OVERLAY,false);
     obs_data_set_default_int(settings,STABILITY_MODE,2); // Balanced

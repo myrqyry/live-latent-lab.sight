@@ -26,7 +26,7 @@ inline std::string holistic_runtime_default(
     if(ec || !fs::is_regular_file(status))return {};
     ec.clear();
     const auto length=fs::file_size(candidate,ec);
-    if(ec || tasks_runtime_abi(length)!=TasksRuntimeAbi::V123)return {};
+    if(ec || tasks_runtime_for_host(length)!=TasksRuntimeAbi::V123)return {};
     return candidate.string();
 }
 
@@ -44,7 +44,7 @@ inline std::string tracking_runtime_default(
     const auto status=fs::symlink_status(candidate,ec);
     if(ec||!fs::is_regular_file(status))return {};
     const auto length=fs::file_size(candidate,ec);
-    if(ec||tasks_runtime_abi(length)==TasksRuntimeAbi::Unknown)return {};
+    if(ec||tasks_runtime_for_host(length)==TasksRuntimeAbi::Unknown)return {};
     return candidate.string();
 }
 

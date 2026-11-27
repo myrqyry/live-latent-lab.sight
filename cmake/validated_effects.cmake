@@ -62,36 +62,8 @@ endif()
 # VRM and Live2D parse JSON in both plugin and native tests.
 find_package(nlohmann_json 3.2 REQUIRED)
 
-add_library(live-latent-lab-sight MODULE
-    src/plugin-main.cpp
-    src/animegan-filter.cpp
-    src/core/enhancement_processor.cpp
-    src/common/sight-log.cpp
-    src/u2net-filter.cpp
-    src/core/segmentation_processor.cpp
-    src/depth-filter.cpp
-    src/core/onnx_depth_processor.cpp
-    src/tasks-tracking-filter.cpp
-    src/core/tasks_tracker.cpp
-    src/core/holistic_tracker.cpp
-    src/core/object_detector.cpp
-    src/core/object_overlay.cpp
-    src/core/hand_signals.cpp
-    src/core/tracking_overlay.cpp
-    src/core/tracking_signal_bus.cpp
-    src/tracking-signal-receiver.cpp
-    src/privacy-v2-filter.cpp
-    src/fast-face-detector.cpp
-    src/3rdparty/libfacedetection/facedetectcnn.cpp
-    src/3rdparty/libfacedetection/facedetectcnn-data.cpp
-    src/3rdparty/libfacedetection/facedetectcnn-model.cpp
-    src/value-router-filter.cpp
-    src/core/value_modulation.cpp
-    src/native-vrm-source.cpp
-    src/vrm/vrm_asset.cpp
-    src/vrm/vrm_tracking.cpp
-    src/vrm/vrm_coverage.cpp
-)
+include("${CMAKE_CURRENT_LIST_DIR}/baseline-sources.cmake")
+add_library(live-latent-lab-sight MODULE ${SIGHT_BASELINE_SOURCES})
 target_link_libraries(live-latent-lab-sight PRIVATE nlohmann_json::nlohmann_json)
 target_compile_definitions(live-latent-lab-sight PRIVATE
     SIGHT_ANIMEGAN_ONLY USE_ONNX_MEDIAPIPE)
@@ -278,6 +250,14 @@ install(FILES
     DESTINATION data)
 
 enable_testing()
+add_executable(sight_native_ort_smoke tests/native_ort_smoke.cpp)
+target_include_directories(sight_native_ort_smoke PRIVATE src "${SIGHT_ORT_INCLUDE}")
+target_link_libraries(sight_native_ort_smoke PRIVATE "${SIGHT_ORT_LIBRARY}")
+add_test(NAME sight_native_ort_utf8 COMMAND sight_native_ort_smoke)
+add_executable(sight_tasks_platform_policy tests/tasks_platform_policy_test.cpp)
+target_include_directories(sight_tasks_platform_policy PRIVATE src)
+add_test(NAME sight_tasks_platform_policy COMMAND sight_tasks_platform_policy)
+
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/litert_tracking.cmake")
 # Only uses Python's stdlib; tests installation safety without touching OBS.
 find_program(SIGHT_PYTHON3_EXECUTABLE NAMES python3)

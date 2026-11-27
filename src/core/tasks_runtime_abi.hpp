@@ -14,4 +14,16 @@ inline constexpr TasksRuntimeAbi tasks_runtime_abi(std::uintmax_t bytes)
         default: return TasksRuntimeAbi::Unknown;
     }
 }
+// No verified Windows/macOS/ARM MediaPipe ABI exists yet. File length alone
+// must not select a Linux ABI on another host.
+#if defined(__linux__) && (defined(__x86_64__) || defined(__amd64__))
+inline constexpr bool tasks_runtime_host_supported = true;
+#else
+inline constexpr bool tasks_runtime_host_supported = false;
+#endif
+inline constexpr TasksRuntimeAbi tasks_runtime_for_host(
+    std::uintmax_t bytes, bool supported = tasks_runtime_host_supported)
+{
+    return supported ? tasks_runtime_abi(bytes) : TasksRuntimeAbi::Unknown;
+}
 } // namespace sight

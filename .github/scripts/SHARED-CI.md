@@ -1,8 +1,8 @@
 # Shared CI qualification
 
-The shared Linux OBS32.2.0/33.0.3 model-free gate uses obs-plugin-ci e9eb704.
+The shared OBS32.2.0/33.0.3 qualification matrix uses obs-plugin-ci e9eb704.
 The bootstrap reads its literal immutable pin from the workflow.
-All 44 required native cases must appear once in the report and pass,
+All 46 required Linux model-free cases must appear once in the report and pass,
 even with Python optimization enabled. Extra tests are also required to pass.
 
 Private repository Actions artifacts are enabled for development testing.
@@ -29,3 +29,23 @@ and configuration on OBS33. Both pinned SDK builds succeeded. Sight now
 installs and explicitly requires nlohmann JSON in both Linux workflows,
 and reads zero-valued OBS API minors correctly. OBS33 still requires a
 complete hosted build/test pass; header parsing alone is not qualification.
+
+## Native Windows and macOS baseline
+
+The shared caller now configures Windows x64, macOS Intel and macOS arm64
+against their pinned native OBS SDKs for both OBS API series. All hosts
+compile the maintained baseline source inventory. Native CPU ONNX Runtime
+1.17.1 is acquired from the publisher package with matching architecture,
+headers and notices; the JSON header and MIT license are also pinned.
+The native package includes only verified stage contents and the correct
+DLL/Mach-O runtime layout. Native tests require real Unicode-path ONNX
+inference, VRM asset parsing, MediaPipe host-boundary policy, and the
+system-install guard. Native graphics tests and Linux-only optional
+integrations (MediaPipe Tasks, OCR, OpenCV flow, Qt settings, LiteRT,
+diffusion, Live2D and neural rendering) are not covered by this baseline.
+
+The native baseline and its four tests passed locally on Linux using the
+publisher SDK. Actual Windows/macOS compilation and packaging must pass on
+their respective hosted runners before being called qualified. The prior
+Linux 32/33 hosted runs at c820a2e both passed all 44 required cases and
+verified archive layout; the extended Linux gate adds two portability tests.

@@ -91,6 +91,12 @@ official frontend API; other versions are unqualified.
 
 ## Build and verify
 
+Windows x64 and macOS (Apple Silicon/Intel) native baseline builds are under
+qualification through the shared CI matrix. They use the same maintained
+CPU/ONNX and VRM sources with matching native SDKs, not Linux runtime binaries.
+Optional Linux-only backends and private Qt integration are not enabled in
+that baseline. See [shared qualification](.github/scripts/SHARED-CI.md).
+
 Requirements: Linux, OBS 32 development headers and libobs, C++20,
 CMake, nlohmann JSON development headers (`nlohmann-json3-dev` on Ubuntu),
 the matching ONNX Runtime 1.17.1, and xvfb-run for graphics tests.

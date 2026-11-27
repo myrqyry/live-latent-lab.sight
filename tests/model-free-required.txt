@@ -42,3 +42,5 @@ sight_depth_temporal_policy
 sight_ocr_output_unit
 sight_dense_motion_unit
 sight_camera_stabilizer_unit
+sight_native_ort_utf8
+sight_tasks_platform_policy

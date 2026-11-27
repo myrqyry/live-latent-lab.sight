@@ -1,8 +1,9 @@
+#include "core/tasks_runtime_abi.hpp"
 #include "common/preferences.hpp"
 #include <obs-module.h>
 #include <graphics/graphics.h>
 #include <util/platform.h>
-#include <dlfcn.h>
+
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -34,10 +35,11 @@ std::string default_model() {
     std::string path=std::string(dir)+"/face_landmarker.task";bfree(dir);return path;
 }
 std::string default_runtime() {
-    Dl_info info{};
-    if(!dladdr(reinterpret_cast<void*>(&default_runtime),&info)||!info.dli_fname)
-        return {};
-    return (std::filesystem::path(info.dli_fname).parent_path()/"libmediapipe.so").string();
+    if(!sight::tasks_runtime_host_supported)return {};
+    auto* module=obs_current_module();
+    const char* path=module?obs_get_module_binary_path(module):nullptr;
+    if(!path)return {};
+    return (std::filesystem::u8path(path).parent_path()/"libmediapipe.so").string();
 }
 struct SemanticSettings {
     bool enabled=false,buffered=false,analysis=false;

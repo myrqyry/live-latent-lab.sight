@@ -1,7 +1,7 @@
 #include "holistic_tracker.hpp"
 #include "tasks_abi_123.hpp"
 #include "tasks_runtime_abi.hpp"
-#include <dlfcn.h>
+#include "tasks_library.hpp"
 #include <climits>
 #include <algorithm>
 #include <cstddef>
@@ -66,7 +66,7 @@ void HolisticTracker::unload() {
     // The MediaPipe library has background TLS destructors: unloading its
     // text before OBS shutdown has caused SIGSEGV. RTLD_NODELETE mirrors the
     // existing verified TasksTracker ownership policy.
-    if(library_) dlclose(library_);
+    if(library_) close_tasks_library(library_);
     library_=nullptr;
     last_timestamp_ms_=-1;
     mask_enabled_=false;
@@ -77,11 +77,12 @@ bool HolisticTracker::load(const std::string& library_path,
                            bool enable_person_mask,const HolisticOptions& config) {
     unload();
     last_error_.clear();
+    if(!tasks_runtime_host_supported){last_error_="No ABI-qualified native MediaPipe runtime for this host";return false;}
     std::error_code ec;
     if(library_path.empty() ||
        !std::filesystem::is_regular_file(library_path,ec) ||
        ec ||
-       tasks_runtime_abi(std::filesystem::file_size(library_path,ec))!=
+       tasks_runtime_for_host(std::filesystem::file_size(library_path,ec))!=
            TasksRuntimeAbi::V123 || ec) {
         last_error_="Holistic requires official MediaPipe 1.2.3 Linux x86_64 libmediapipe.so";
         return false;
@@ -91,10 +92,10 @@ bool HolisticTracker::load(const std::string& library_path,
         last_error_="Holistic model .task missing or empty";
         return false;
     }
-    library_=dlopen(library_path.c_str(),RTLD_NOW|RTLD_LOCAL|RTLD_NODELETE);
-    if(!library_) {last_error_=dlerror();return false;}
+    library_=open_tasks_library(library_path,last_error_);
+    if(!library_) {return false;}
     api_=new Symbols{};
-#define MP_GET(field,symbol) do {api_->field=reinterpret_cast<decltype(api_->field)>(dlsym(library_,#symbol)); if(!api_->field){last_error_="Missing "#symbol;unload();return false;}}while(0)
+#define MP_GET(field,symbol) do {api_->field=reinterpret_cast<decltype(api_->field)>(tasks_library_symbol(library_,#symbol)); if(!api_->field){last_error_="Missing "#symbol;unload();return false;}}while(0)
     MP_GET(create_image,MpImageCreateFromUint8Data);
     MP_GET(free_image,MpImageFree);
     if(enable_person_mask) {

@@ -3,7 +3,7 @@
 #include "tasks_runtime_abi.hpp"
 #include <mediapipe/tasks/c/vision/core/image.h>
 #include <mediapipe/tasks/c/vision/core/image_processing_options.h>
-#include <dlfcn.h>
+#include "tasks_library.hpp"
 #include <algorithm>
 #include <climits>
 #include <cmath>
@@ -72,17 +72,18 @@ void ObjectDetector::unload(){
     delete api_;api_=nullptr;
     // XNNPACK native TLS can outlive the classifier on worker teardown.
     // RTLD_NODELETE keeps code mapped until OBS exits.
-    if(library_)dlclose(library_);
+    if(library_)close_tasks_library(library_);
     library_=nullptr;
     last_timestamp_=-1;
 }
 bool ObjectDetector::load(const std::string& library_path,
                           const std::string& model_path,float score_threshold,int max_results){
     unload();last_error_.clear();
+    if(!tasks_runtime_host_supported){last_error_="No ABI-qualified native MediaPipe runtime for this host";return false;}
     std::error_code ec;
     if(library_path.empty() ||
        !std::filesystem::is_regular_file(library_path,ec)||ec ||
-       tasks_runtime_abi(std::filesystem::file_size(library_path,ec))!=TasksRuntimeAbi::V123||ec){
+       tasks_runtime_for_host(std::filesystem::file_size(library_path,ec))!=TasksRuntimeAbi::V123||ec){
         last_error_="Object detector requires Sight's verified native MediaPipe 1.2.3 runtime";
         return false;
     }
@@ -92,10 +93,10 @@ bool ObjectDetector::load(const std::string& library_path,
         last_error_="Missing or empty compatible object detection model";
         return false;
     }
-    library_=dlopen(library_path.c_str(),RTLD_NOW|RTLD_LOCAL|RTLD_NODELETE);
-    if(!library_){last_error_=dlerror();return false;}
+    library_=open_tasks_library(library_path,last_error_);
+    if(!library_){return false;}
     api_=new Symbols{};
-#define MP_GET(field,symbol) do {api_->field=reinterpret_cast<decltype(api_->field)>(dlsym(library_,#symbol));if(!api_->field){last_error_="Missing symbol "#symbol;unload();return false;}}while(0)
+#define MP_GET(field,symbol) do {api_->field=reinterpret_cast<decltype(api_->field)>(tasks_library_symbol(library_,#symbol));if(!api_->field){last_error_="Missing symbol "#symbol;unload();return false;}}while(0)
     MP_GET(create_image,MpImageCreateFromUint8Data);
     MP_GET(free_image,MpImageFree);
     MP_GET(free_error,MpErrorFree);

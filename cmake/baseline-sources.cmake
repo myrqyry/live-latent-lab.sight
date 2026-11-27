@@ -1,0 +1,31 @@
+# Shared maintained source inventory for Linux and native host builds.
+set(SIGHT_BASELINE_SOURCES
+    src/plugin-main.cpp
+    src/animegan-filter.cpp
+    src/core/enhancement_processor.cpp
+    src/common/sight-log.cpp
+    src/u2net-filter.cpp
+    src/core/segmentation_processor.cpp
+    src/depth-filter.cpp
+    src/core/onnx_depth_processor.cpp
+    src/tasks-tracking-filter.cpp
+    src/core/tasks_tracker.cpp
+    src/core/holistic_tracker.cpp
+    src/core/object_detector.cpp
+    src/core/object_overlay.cpp
+    src/core/hand_signals.cpp
+    src/core/tracking_overlay.cpp
+    src/core/tracking_signal_bus.cpp
+    src/tracking-signal-receiver.cpp
+    src/privacy-v2-filter.cpp
+    src/fast-face-detector.cpp
+    src/3rdparty/libfacedetection/facedetectcnn.cpp
+    src/3rdparty/libfacedetection/facedetectcnn-data.cpp
+    src/3rdparty/libfacedetection/facedetectcnn-model.cpp
+    src/value-router-filter.cpp
+    src/core/value_modulation.cpp
+    src/native-vrm-source.cpp
+    src/vrm/vrm_asset.cpp
+    src/vrm/vrm_tracking.cpp
+    src/vrm/vrm_coverage.cpp
+)

@@ -16,6 +16,8 @@ inline Result check(std::string_view value, Format format)
     const bool runtime = format == Format::MediaPipe || format == Format::MediaPipe123 ||
                          format == Format::OptionalMediaPipe;
     const auto warning = OBS_TEXT_INFO_WARNING, error = OBS_TEXT_INFO_ERROR, normal = OBS_TEXT_INFO_NORMAL;
+    if (runtime && !sight::tasks_runtime_host_supported)
+        return {"No ABI-qualified native MediaPipe runtime for this host.", warning};
     if (value.empty()) {
         if (format == Format::OptionalMediaPipe)
             return {"No runtime selected. Required only for the MediaPipe CPU detector.", normal};
@@ -50,7 +52,7 @@ inline Result check(std::string_view value, Format format)
     if (runtime) {
         if (stream.gcount() < 4 || std::string_view(header,4) != "\x7f" "ELF")
             return {"Selected runtime is not an ELF shared library.", error};
-        const auto abi = sight::tasks_runtime_abi(bytes);
+        const auto abi = sight::tasks_runtime_for_host(bytes);
         if (abi == sight::TasksRuntimeAbi::Unknown)
             return {"Runtime size does not match a supported MediaPipe ABI. See the runtime setup guide.", error};
         if ((format == Format::MediaPipe123 || format == Format::OptionalMediaPipe) &&

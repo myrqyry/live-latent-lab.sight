@@ -3,7 +3,7 @@
 #include "tasks_runtime_abi.hpp"
 #include "tasks_world_landmarks.hpp"
 #include "hand_signals.hpp"
-#include <dlfcn.h>
+#include "tasks_library.hpp"
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
@@ -67,7 +67,7 @@ void TasksTracker::unload()
     }
     handle_=nullptr;
     delete api_; api_=nullptr;
-    if (library_) dlclose(library_);
+    if (library_) close_tasks_library(library_);
     library_=nullptr;
     last_timestamp_ms_=-1;
 }
@@ -78,12 +78,13 @@ bool TasksTracker::load(const std::string& library_path,
     unload();
     last_error_.clear();
     kind_=kind;
+    if(!tasks_runtime_host_supported){last_error_="No ABI-qualified native MediaPipe runtime for this host";return false;}
     std::error_code ec;
     const auto bytes = (!library_path.empty() &&
                         std::filesystem::is_regular_file(library_path,ec))
                            ? std::filesystem::file_size(library_path,ec)
                            : uintmax_t{0};
-    const auto abi = ec ? TasksRuntimeAbi::Unknown : tasks_runtime_abi(bytes);
+    const auto abi = ec ? TasksRuntimeAbi::Unknown : tasks_runtime_for_host(bytes);
     if (abi == TasksRuntimeAbi::Unknown) {
         last_error_ = std::string(
             "MediaPipe library missing or unverified ABI; supported: legacy "
@@ -103,10 +104,10 @@ bool TasksTracker::load(const std::string& library_path,
     // SIGSEGV during obs_shutdown (inside __nptl_deallocate_tsd). Keeping
     // this specific verified library mapped until process exit avoids the
     // use-after-dlclose while preserving per-filter task graph cleanup.
-    library_=dlopen(library_path.c_str(),RTLD_NOW|RTLD_LOCAL|RTLD_NODELETE);
-    if (!library_) {last_error_=dlerror();return false;}
+    library_=open_tasks_library(library_path,last_error_);
+    if (!library_) {return false;}
     auto* api=new Symbols;
-#define MP_GET(field,symbol) do { api->field = reinterpret_cast<decltype(api->field)>(dlsym(library_,#symbol)); if(!api->field) {last_error_="Missing " #symbol; delete api; unload(); return false;} } while(0)
+#define MP_GET(field,symbol) do { api->field = reinterpret_cast<decltype(api->field)>(tasks_library_symbol(library_,#symbol)); if(!api->field) {last_error_="Missing " #symbol; delete api; unload(); return false;} } while(0)
     MP_GET(create_image,MpImageCreateFromUint8Data);
     MP_GET(free_image,MpImageFree);
     MP_GET(free_error,MpErrorFree);
