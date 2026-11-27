@@ -143,3 +143,34 @@ provenance must be resolved separately. See docs/native-diffusion.md.
 The project owner selected GPL-3.0-only. The full license and scope notice
 are included in source and local staged packages. Existing third-party
 licenses are unchanged; this does not clear dependency or model distribution.
+
+## Dependency and source-preview qualification (2026-11-26)
+
+- All 16 retained ONNX Runtime 1.17.1 files match the pinned independent
+  archive byte-for-byte; publisher original archive unavailable. Embedded
+  libfacedetection weights match upstream after trailing-whitespace
+  normalization, with equivalent explicit result cap and stride. Retain
+  the original BSD notices and reviewed vendor files. Actual official
+  MediaPipe 1.2.3 wheel and ELF match both recorded hashes; verified local
+  extraction helper rejects bad inputs and existing outputs. Default
+  package excludes this runtime. See dependency-provenance receipt.
+- Optional neural rendering now includes only Sight's own integration,
+  worker and CUDA source, with the original MIT reference notice. Both
+  external graph pins and MIT notices were verified. No external graph,
+  checkpoint, proprietary binaries or extraction scripts copied. Actual
+  curated combined CUDA/depth/temporal test passed. Of 11 integration
+  cases, 10 passed initially; custom-draw frame locking exceeded its
+  startup test deadline during concurrent compilation. Corrected deadline
+  and isolated rerun passed with old/new scene MAE 3.73/108.31. Stage 38
+  files, no model assets or test-only MediaPipe library. External checkpoint
+  rights and portability remain unapproved.
+- Fresh clone plus explicit source-only pending changes, independent build
+  directory and isolated home, no local model flags, 44/44 tests passed
+  after moving the pure OCR output test outside the optional Tesseract
+  condition. Default model-free package stage 17 files. Host lacks system
+  Tesseract headers; real OCR remains separately qualified in the expanded
+  build. New Linux pinned-OBS source qualification workflow publishes no
+  artifacts; it has not run on hosted infrastructure. No claim of second
+  machine, Windows, macOS or high-resolution webcam certification.
+- Receipt: docs/qualification/source-readiness-20261126.json. Previous
+  statements excluding the neural worker are historical and superseded.

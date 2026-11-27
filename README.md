@@ -73,8 +73,9 @@ high-resolution performance have not been qualified.
 
 See [native diffusion setup](docs/native-diffusion.md) for source builds,
 requirements, and verification. Neither checkpoints nor proprietary GPU
-model assets are included. The neural-rendering worker remains outside this
-candidate pending a separate source/model provenance review.
+model assets are included. The optional [neural-rendering integration](docs/neural-rendering.md)
+is also available as source; its external graph and compatible checkpoint
+remain user-provisioned, not bundled.
 
 ## Plugin preferences
 

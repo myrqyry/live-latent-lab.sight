@@ -1,0 +1,29 @@
+{
+  "date": "2026-11-26",
+  "neural_source": {
+    "initial_cases": 11,
+    "passed": 10,
+    "initial_failed": [
+      "sight_neural_rendering_custom_draw_obs"
+    ],
+    "isolated_retest_passed": true,
+    "frame_locked_old_mae": 3.72842,
+    "replacement_mae": 108.308,
+    "scene_cut_mae": 0,
+    "stage_files": 38,
+    "external_graph_weights_binaries_included": false,
+    "upstream_mit_notices_exact": true
+  },
+  "clean_source": {
+    "cases": 44,
+    "passed": 44,
+    "skipped": 0,
+    "stage_files": 17,
+    "same_host": true,
+    "private_model_paths_supplied": false,
+    "tesseract_headers_available": false,
+    "hosted_workflow_executed": false,
+    "notes": "fresh clone of prior committed baseline with explicit pending source overlay; model-free OCR contract moved outside Tesseract condition and all tests rerun"
+  },
+  "publication_approved": false
+}

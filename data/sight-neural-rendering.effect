@@ -1,0 +1,129 @@
+// Signed appearance residual with optional motion compensation.
+// The locked path samples the exact captured source frame.
+uniform float4x4 ViewProj;
+uniform texture2d image;
+uniform texture2d correction;
+uniform texture2d reference_image;
+uniform float2 proxy_size;
+uniform texture2d motion_grid;
+uniform int sync_mode;
+uniform float flow_enabled;
+uniform float strength;
+uniform float relighting;
+uniform float surface_detail;
+uniform float color_strength;
+uniform float highlight_protection;
+uniform float2 correction_size;
+uniform float edge_aware;
+uniform texture2d depth_image;
+uniform float depth_guidance;
+sampler_state linear_sample {Filter=Linear;AddressU=Clamp;AddressV=Clamp;};
+sampler_state depth_sample {Filter=Point;AddressU=Clamp;AddressV=Clamp;};
+struct VSInput {float4 pos:POSITION;float2 uv:TEXCOORD0;};
+struct VSOutput {float4 pos:POSITION;float2 uv:TEXCOORD0;};
+VSOutput VSMain(VSInput v_in) {
+    VSOutput v;v.pos=mul(float4(v_in.pos.xyz,1.0),ViewProj);v.uv=v_in.uv;return v;
+}
+float luma(float3 c) {
+    return dot(c,float3(0.2126,0.7152,0.0722));
+}
+// Sparse edge-aware low-pass of the signed neural residual. The source
+// guides the range weights; it is never itself sharpened or recolored.
+float depth_weight(float2 a,float2 b) {
+    if(depth_guidance<=0.0)return 1.0;
+    float diff=depth_image.Sample(depth_sample,saturate(a)).r-depth_image.Sample(depth_sample,saturate(b)).r;
+    return 1.0/(1.0+128.0*depth_guidance*diff*diff);
+}
+float2 residual_tap(float2 uv,float2 source_uv,float2 offset,float3 guide) {
+    float3 neighbor=image.Sample(linear_sample,source_uv+offset).rgb;
+    float3 diff=neighbor-guide;
+    float weight=depth_weight(source_uv,source_uv+offset)/(1.0+24.0*dot(diff,diff));
+    float y=luma(correction.Sample(linear_sample,uv+offset).rgb);
+    return float2(y*weight,weight);
+}
+// Joint bilateral interpolation on the correction lattice. Use the
+// full-resolution live source as guidance, offset by the locally selected
+// motion displacement, rather than smoothing or sharpening the source.
+float4 guided_tap(float2 tap,float2 uv,float2 source_uv,float4 guide,float spatial) {
+    tap=saturate(tap);
+    float4 neighbor=image.Sample(linear_sample,saturate(source_uv+tap-uv));
+    float4 diff=neighbor-guide;
+    float weight=spatial*depth_weight(source_uv,source_uv+tap-uv)/(1.0+128.0*(depth_guidance>0.0?edge_aware:1.0)*dot(diff,diff));
+    return float4(correction.Sample(linear_sample,tap).rgb*weight,weight);
+}
+float3 guided_correction(float2 uv,float2 source_uv,float4 guide) {
+    float2 cell=uv*correction_size-0.5;
+    float2 part=frac(cell);
+    float2 origin=(floor(cell)+0.5)/correction_size;
+    float2 step=1.0/correction_size;
+    float4 sum=guided_tap(origin,uv,source_uv,guide,(1.0-part.x)*(1.0-part.y));
+    sum+=guided_tap(origin+float2(step.x,0.0),uv,source_uv,guide,part.x*(1.0-part.y));
+    sum+=guided_tap(origin+float2(0.0,step.y),uv,source_uv,guide,(1.0-part.x)*part.y);
+    sum+=guided_tap(origin+step,uv,source_uv,guide,part.x*part.y);
+    return sum.rgb/max(sum.a,0.000001);
+}
+float4 PSMain(VSOutput v_in):TARGET {
+    float4 original=image.Sample(linear_sample,v_in.uv);
+    float2 uv=v_in.uv;
+    float confidence=1.0;
+    if(sync_mode==1) {
+        float3 motion=motion_grid.Sample(linear_sample,uv).rgb*flow_enabled;
+        float2 warped=uv+motion.xy/max(motion.z,0.001);
+        // Sample the current image on the same proxy lattice, then interpolate.
+        // Unlike the asynchronously captured flow input this is the live frame.
+        float2 cell=uv*proxy_size-0.5;
+        float2 corner=floor(cell);
+        float2 part=frac(cell);
+        float2 origin=(corner+0.5)/proxy_size;
+        float2 step=1.0/proxy_size;
+        float3 c00=image.Sample(linear_sample,origin).rgb;
+        float3 c10=image.Sample(linear_sample,origin+float2(step.x,0.0)).rgb;
+        float3 c01=image.Sample(linear_sample,origin+float2(0.0,step.y)).rgb;
+        float3 c11=image.Sample(linear_sample,origin+step).rgb;
+        float3 current=lerp(lerp(c00,c10,part.x),lerp(c01,c11,part.x),part.y);
+        float3 ref0=reference_image.Sample(linear_sample,uv).rgb;
+        float3 ref1=reference_image.Sample(linear_sample,saturate(warped)).rgb;
+        float3 e0=abs(current-ref0),e1=abs(current-ref1);
+        float err0=max(e0.r,max(e0.g,e0.b)),err1=max(e1.r,max(e1.g,e1.b));
+        float c0=1.0-smoothstep(0.035,0.16,err0);
+        float c1=(1.0-smoothstep(0.035,0.16,err1))*saturate(motion.z);
+        if(warped.x<0.0||warped.y<0.0||warped.x>1.0||warped.y>1.0)c1=0.0;
+        if(c1>c0+0.03) {uv=warped;confidence=c1;} else confidence=c0;
+    }
+    float3 delta=correction.Sample(linear_sample,uv).rgb;
+    if(edge_aware>0.0||depth_guidance>0.0)
+        delta=lerp(delta,guided_correction(uv,v_in.uv,original),max(edge_aware,depth_guidance));
+    // Neutral settings preserve the old shader exactly. Spatial separation
+    // is evaluated only if the two luminance gains differ.
+    if(relighting!=1.0||surface_detail!=1.0||color_strength!=1.0) {
+        float y=luma(delta);
+        float low=y;
+        if(relighting!=surface_detail) {
+            float2 step=4.0/correction_size;
+            float2 sum=float2(2.0*y,2.0);
+            sum+=residual_tap(uv,v_in.uv,float2(step.x,0.0),original.rgb);
+            sum+=residual_tap(uv,v_in.uv,float2(-step.x,0.0),original.rgb);
+            sum+=residual_tap(uv,v_in.uv,float2(0.0,step.y),original.rgb);
+            sum+=residual_tap(uv,v_in.uv,float2(0.0,-step.y),original.rgb);
+            sum+=residual_tap(uv,v_in.uv,step,original.rgb);
+            sum+=residual_tap(uv,v_in.uv,-step,original.rgb);
+            sum+=residual_tap(uv,v_in.uv,float2(step.x,-step.y),original.rgb);
+            sum+=residual_tap(uv,v_in.uv,float2(-step.x,step.y),original.rgb);
+            low=sum.x/sum.y;
+        }
+        float adjusted_y=relighting*low+surface_detail*(y-low);
+        delta=color_strength*(delta-float3(y,y,y))+float3(adjusted_y,adjusted_y,adjusted_y);
+    }
+    float3 boost=strength*confidence*original.a*delta;
+    if(highlight_protection>0.0) {
+        // One scalar keeps the signed RGB direction intact. Compress
+        // before the hard clip; protection=0 retains legacy compositing.
+        float3 room=lerp(original.rgb,1.0-original.rgb,step(0.0,boost));
+        float3 ratio=abs(boost)/max(room,0.0001);
+        float peak=max(ratio.r,max(ratio.g,ratio.b));
+        float scale=1.0/(1.0+max(0.0,peak-0.75));
+        boost*=lerp(1.0,scale,highlight_protection);
+    }
+    return float4(saturate(original.rgb+boost),original.a);
+}
+technique Draw {pass {vertex_shader=VSMain(v_in);pixel_shader=PSMain(v_in);}}

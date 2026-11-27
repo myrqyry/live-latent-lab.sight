@@ -1,0 +1,12 @@
+Sight's own integration, worker and CUDA primitives are covered by the
+project's GPL-3.0-only license. The frontend feature semantics and numerical
+contracts draw on the MIT-licensed OpenDLSS-NR, Copyright (c) 2026 maan.
+The unmodified MIT notice is in LICENSE-OpenDLSS-NR.txt.
+Upstream: https://github.com/maanHimself/OpenDLSS-NR
+Pinned revision: 9d08f4184bbcb9d858e2fb7a7834ec0837a9d2f1
+External graph: https://github.com/DylanWaken/DLSS5-Pytorch
+Pinned revision: 09befd1ef418c8d23be8db8d33cb8fa1c2b009db
+Both pinned upstream revisions were reachable and their MIT notices matched.
+Neither graph code nor model weights, NVIDIA binaries, extraction artifacts,
+CUDA SDK or Python environment are included in this curated tree or package.
+A source license does not grant rights to proprietary model assets.

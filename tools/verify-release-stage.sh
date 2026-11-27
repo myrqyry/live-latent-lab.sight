@@ -60,13 +60,19 @@ require_file "data/licenses/onnxruntime/ThirdPartyNotices.txt"
 require_file "data/licenses/libfacedetection/LICENSE"
 require_file "data/licenses/tinygltf/LICENSE"
 require_file "data/licenses/stb/LICENSE"
+if [[ -e "$prefix/data/sight-neural-rendering.effect" ]]; then
+  for file in LICENSE-OpenDLSS-NR.txt UPSTREAM-NOTICE.txt fused.cu fused.py input_conditioning.py primitives.cuh quantized.py replay.py still.py worker.py; do
+    require_file "data/neural-rendering/$file"
+  done
+  echo "SIGHT_STAGE_NEURAL_SOURCE_INCLUDED=YES (external graph and weights not included)"
+fi
 if [[ -e "$prefix/bin/64bit/libmediapipe.so" ]]; then
   require_file "data/licenses/mediapipe/LICENSE"
   echo "SIGHT_STAGE_MEDIAPIPE_INCLUDED=YES (redistribution rights still require review)"
 else
   echo "SIGHT_STAGE_MEDIAPIPE_INCLUDED=NO (face/body/hand require a separate runtime)"
 fi
-if find "$prefix" -type f \( -iname '*.onnx' -o -iname '*.task' -o -iname '*.tflite' -o -iname '*.safetensors' -o -iname '*.pt' -o -iname '*.pth' -o -iname '*.gguf' -o -iname '*.ckpt' \) -print -quit | grep -q .; then
+if find "$prefix" -type f \( -iname '*.onnx' -o -iname '*.task' -o -iname '*.tflite' -o -iname '*.safetensors' -o -iname '*.pt' -o -iname '*.pth' -o -iname '*.gguf' -o -iname '*.ckpt' -o -iname '*.moc3' -o -iname '*.engine' -o -iname '*.plan' -o -iname '*.npz' \) -print -quit | grep -q .; then
   echo "RELEASE_STAGE_UNEXPECTED_MODEL_BUNDLE=YES" >&2
   exit 1
 fi

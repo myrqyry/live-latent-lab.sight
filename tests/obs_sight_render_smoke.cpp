@@ -329,6 +329,12 @@ int main(int argc, char **argv)
     const char *name = nullptr;
     bool verified_only = true;
     bool found_native_sd_live=false;
+    bool found_neural_rendering=false;
+#ifdef SIGHT_SMOKE_EXPECT_NEURAL_RENDERING
+    constexpr bool expect_neural_rendering=true;
+#else
+    constexpr bool expect_neural_rendering=false;
+#endif
 #ifdef SIGHT_SMOKE_EXPECT_NATIVE_SD_LIVE
     constexpr bool expect_native_sd_live=true;
 #else
@@ -369,6 +375,8 @@ int main(int argc, char **argv)
             found_flow=true;
         else if(std::strcmp(name,"sight_native_sd_live_filter")==0)
             found_native_sd_live=true;
+        else if(std::strcmp(name,"sight_neural_rendering_filter")==0)
+            found_neural_rendering=true;
         else
             verified_only = false;
     }
@@ -423,7 +431,7 @@ int main(int argc, char **argv)
             obs_shutdown();return 1;
         }
     }
-    if (count != 8+size_t(found_ocr)+size_t(found_flow)+size_t(expect_native_sd_live) || found_native_sd_live!=expect_native_sd_live || !verified_only || !found_unified ||
+    if (count != 8+size_t(found_ocr)+size_t(found_flow)+size_t(expect_native_sd_live)+size_t(expect_neural_rendering) || found_neural_rendering!=expect_neural_rendering || found_native_sd_live!=expect_native_sd_live || !verified_only || !found_unified ||
         !found_privacy || !found_sketch || !found_u2net || !found_depth ||
         !found_receiver || !found_router) {
         std::cerr << "FAIL: expected exactly the verified Sight filter set\n";

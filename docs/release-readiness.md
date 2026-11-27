@@ -30,7 +30,9 @@ separate from the experimental all-effects build.
   separately opt-in, using the pinned public stable-diffusion.cpp source.
   See [native diffusion](native-diffusion.md) for qualified scope. The
   legacy all-effects path is unqualified and not a release build.
-  Neural rendering remains outside the candidate pending provenance review.
+  The [neural-rendering integration](neural-rendering.md) is separately
+  opt-in; external graph code, model weights and NVIDIA binaries stay out
+  of the candidate and require independent rights.
 - **Optional Live2D source:** retained behind the existing local SDK build option.
   See [native Live2D development and publication boundary](live2d-native.md).
   The default candidate excludes Cubism; an enabled binary is not cleared.
@@ -133,3 +135,16 @@ See docs/object-tracking-mediapipe.md.
 
 No push, publication, tag, release, model upload, or system installation
 is authorized by this document.
+
+## Current source-preview qualification
+
+The independent dependency archive corroboration and local runtime
+acquisition are documented in the [dependency receipt](qualification/dependency-provenance-20261126.json).
+The [source-readiness receipt](qualification/source-readiness-20261126.json)
+records the optional neural worker integration and isolated model-free
+build. Re-run the source gate in a fresh checkout with `bash
+tools/verify-clean-build.sh /path/to/new/build`. The Linux CI workflow uses
+the pinned OBS 32.2 SDK and intentionally uploads no binaries. Publisher
+provenance/rights for unbundled model assets, portable CUDA dependencies,
+second-host and ordinary webcam acceptance remain distinct from source
+readiness. Never publish the private development repository.

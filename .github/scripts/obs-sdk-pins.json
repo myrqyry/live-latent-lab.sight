@@ -1,0 +1,8 @@
+{
+  "32.2.0": {
+    "source_sha256": "c333e4a7d5c4a94c7bb4833f046368e0ac5e981fb3964ca4981b23be1dfbda4a",
+    "websocket_revision": "1ef34bf48110c2a18184e50e41cd0b1a855e2147",
+    "websocket_sha256": "c29e8e38ee66c36db79cae86217ab0f270aad39f97e82090809d087c281b7948",
+    "dependencies": "2026-07-15"
+  }
+}

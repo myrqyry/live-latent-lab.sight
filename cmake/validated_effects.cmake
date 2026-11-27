@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Do not use libobs' pkg-config compile flags for C++: some Linux OBS
 # packages export -std=gnu17 and -Werror, which break this C++20 plugin.
 find_path(SIGHT_OBS_INCLUDE obs-module.h REQUIRED
-    PATHS /usr/local/include/obs /usr/include/obs NO_DEFAULT_PATH)
+    PATHS "$ENV{SIGHT_OBS_SDK_ROOT}/include/obs" /usr/local/include/obs /usr/include/obs NO_DEFAULT_PATH)
 file(READ "${SIGHT_OBS_INCLUDE}/obs-config.h" SIGHT_OBS_CONFIG_H)
 string(REGEX MATCH "LIBOBS_API_MAJOR_VER +([0-9]+)" _sight_obs_major "${SIGHT_OBS_CONFIG_H}")
 set(SIGHT_OBS_API_MAJOR "${CMAKE_MATCH_1}")
@@ -35,7 +35,7 @@ endif()
 message(STATUS "Sight validated build certified against libobs API "
         "${SIGHT_OBS_API_MAJOR}.${SIGHT_OBS_API_MINOR} (patch differences load-safe)")
 find_library(SIGHT_OBS_LIBRARY NAMES obs REQUIRED
-    PATHS /usr/local/lib /usr/lib/x86_64-linux-gnu NO_DEFAULT_PATH)
+    PATHS "$ENV{SIGHT_OBS_SDK_ROOT}/lib" "$ENV{SIGHT_OBS_SDK_ROOT}/lib/x86_64-linux-gnu" /usr/local/lib /usr/lib/x86_64-linux-gnu NO_DEFAULT_PATH)
 
 set(SIGHT_ORT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/external/onnxruntime" CACHE PATH
     "ONNX Runtime installation with include/ and lib/")
@@ -1461,11 +1461,10 @@ message(STATUS "ONNX Runtime: ${SIGHT_ORT_LIBRARY}")
 
 # The language data is deliberately external to the plugin package. A
 # configured real model enables reproducible OCR inference/render tests.
-if(SIGHT_HAVE_OCR)
-    add_executable(sight_ocr_output_test tests/ocr_output_test.cpp)
-    target_include_directories(sight_ocr_output_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
-    add_test(NAME sight_ocr_output_unit COMMAND sight_ocr_output_test)
-endif()
+# Geometry/output contracts are model-free and do not need Tesseract.
+add_executable(sight_ocr_output_test tests/ocr_output_test.cpp)
+target_include_directories(sight_ocr_output_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+add_test(NAME sight_ocr_output_unit COMMAND sight_ocr_output_test)
 
 set(SIGHT_OCR_TESSDATA_DIR "" CACHE PATH "Directory with eng.traineddata for OCR verification")
 if(SIGHT_HAVE_OCR AND SIGHT_OCR_TESSDATA_DIR AND

@@ -46,6 +46,9 @@ extern struct obs_source_info sight_spatial_motion_filter_info;
 extern struct obs_source_info sight_tracking_receiver_filter_info;
 extern struct obs_source_info sight_value_router_filter_info;
 extern struct obs_source_info sight_native_vrm_source_info;
+#ifdef SIGHT_HAVE_NEURAL_RENDERING
+extern struct obs_source_info sight_neural_rendering_filter_info;
+#endif
 #ifdef SIGHT_HAVE_NATIVE_SD_IMAGE_SOURCE
 extern struct obs_source_info image_gen_source_info;
 #endif
@@ -107,6 +110,9 @@ bool obs_module_load(void)
     obs_register_source(&sight_tracking_receiver_filter_info);
     obs_register_source(&sight_value_router_filter_info);
     obs_register_source(&sight_native_vrm_source_info);
+#ifdef SIGHT_HAVE_NEURAL_RENDERING
+    obs_register_source(&sight_neural_rendering_filter_info);
+#endif
 #ifdef SIGHT_HAVE_NATIVE_SD_IMAGE_SOURCE
     obs_register_source(&image_gen_source_info);
 #endif

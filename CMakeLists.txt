@@ -9,6 +9,7 @@ if(NOT SIGHT_ENABLE_UNVERIFIED_EFFECTS)
     include(cmake/validated_effects.cmake)
     include(cmake/native_sd_generator.cmake)
     include(cmake/native_sd_live.cmake)
+    include(cmake/neural_rendering.cmake)
     return()
 endif()
 
