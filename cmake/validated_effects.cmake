@@ -16,14 +16,8 @@ else()
     set(_sight_sdk_lib /usr/local/lib /usr/lib/x86_64-linux-gnu)
 endif()
 find_path(SIGHT_OBS_INCLUDE obs-module.h REQUIRED PATHS ${_sight_sdk_include} NO_DEFAULT_PATH)
-file(READ "${SIGHT_OBS_INCLUDE}/obs-config.h" SIGHT_OBS_CONFIG_H)
-string(REGEX MATCH "LIBOBS_API_MAJOR_VER +([0-9]+)" _sight_obs_major "${SIGHT_OBS_CONFIG_H}")
-set(SIGHT_OBS_API_MAJOR "${CMAKE_MATCH_1}")
-string(REGEX MATCH "LIBOBS_API_MINOR_VER +([0-9]+)" _sight_obs_minor "${SIGHT_OBS_CONFIG_H}")
-set(SIGHT_OBS_API_MINOR "${CMAKE_MATCH_1}")
-if(NOT SIGHT_OBS_API_MAJOR OR NOT SIGHT_OBS_API_MINOR)
-    message(FATAL_ERROR "Could not read LIBOBS_API version from ${SIGHT_OBS_INCLUDE}/obs-config.h")
-endif()
+include("${CMAKE_CURRENT_LIST_DIR}/obs-api-version.cmake")
+sight_read_obs_api_version("${SIGHT_OBS_INCLUDE}/obs-config.h" SIGHT_OBS_API_MAJOR SIGHT_OBS_API_MINOR)
 # OBS refuses to load modules compiled against a newer libobs major/minor.
 # Validated effects are re-verified against this exact API series; changing it
 # requires a fresh full validation pass, not just a successful compile.
@@ -65,6 +59,9 @@ if(NOT _sight_ort_library_in_root EQUAL 0 OR NOT _sight_ort_include_in_root EQUA
 endif()
 
 
+# VRM and Live2D parse JSON in both plugin and native tests.
+find_package(nlohmann_json 3.2 REQUIRED)
+
 add_library(live-latent-lab-sight MODULE
     src/plugin-main.cpp
     src/animegan-filter.cpp
@@ -95,6 +92,7 @@ add_library(live-latent-lab-sight MODULE
     src/vrm/vrm_tracking.cpp
     src/vrm/vrm_coverage.cpp
 )
+target_link_libraries(live-latent-lab-sight PRIVATE nlohmann_json::nlohmann_json)
 target_compile_definitions(live-latent-lab-sight PRIVATE
     SIGHT_ANIMEGAN_ONLY USE_ONNX_MEDIAPIPE)
 option(SIGHT_SETTINGS_PAGE "Include native Qt Plugins settings page" ON)
@@ -591,16 +589,19 @@ if(SIGHT_XVFB_RUN)
 endif()
 add_executable(sight_live2d_animation_test tests/live2d_animation_test.cpp src/live2d/animation.cpp)
 target_include_directories(sight_live2d_animation_test PRIVATE src)
+target_link_libraries(sight_live2d_animation_test PRIVATE nlohmann_json::nlohmann_json)
 target_compile_options(sight_live2d_animation_test PRIVATE -UNDEBUG)
 add_test(NAME sight_live2d_animation_unit COMMAND sight_live2d_animation_test)
 add_executable(sight_live2d_intake_test tests/live2d_intake_test.cpp
     src/live2d/model_package.cpp src/live2d/face_parameters.cpp)
 target_include_directories(sight_live2d_intake_test PRIVATE src)
+target_link_libraries(sight_live2d_intake_test PRIVATE nlohmann_json::nlohmann_json)
 target_compile_options(sight_live2d_intake_test PRIVATE -UNDEBUG)
 add_test(NAME sight_live2d_intake_unit COMMAND sight_live2d_intake_test)
 
 add_executable(sight_vrm_asset_test tests/vrm_asset_test.cpp src/vrm/vrm_asset.cpp)
 target_include_directories(sight_vrm_asset_test PRIVATE src)
+target_link_libraries(sight_vrm_asset_test PRIVATE nlohmann_json::nlohmann_json)
 # Keep test assertions active in Release / RelWithDebInfo builds.
 target_compile_options(sight_vrm_asset_test PRIVATE -UNDEBUG)
 add_test(NAME sight_vrm_asset_unit COMMAND sight_vrm_asset_test)
@@ -630,12 +631,14 @@ add_test(NAME sight_tasks_world_landmarks_unit COMMAND sight_tasks_world_landmar
 add_executable(sight_vrm_tracking_test tests/vrm_tracking_test.cpp
     src/vrm/vrm_asset.cpp src/vrm/vrm_tracking.cpp)
 target_include_directories(sight_vrm_tracking_test PRIVATE src)
+target_link_libraries(sight_vrm_tracking_test PRIVATE nlohmann_json::nlohmann_json)
 target_compile_options(sight_vrm_tracking_test PRIVATE -UNDEBUG)
 add_test(NAME sight_vrm_tracking_unit COMMAND sight_vrm_tracking_test)
 add_executable(sight_vrm_coverage_test
     tests/vrm_coverage_test.cpp src/vrm/vrm_coverage.cpp
     src/vrm/vrm_asset.cpp src/vrm/vrm_tracking.cpp)
 target_include_directories(sight_vrm_coverage_test PRIVATE src)
+target_link_libraries(sight_vrm_coverage_test PRIVATE nlohmann_json::nlohmann_json)
 target_compile_options(sight_vrm_coverage_test PRIVATE -UNDEBUG)
 add_test(NAME sight_vrm_coverage_unit COMMAND sight_vrm_coverage_test)
 
@@ -643,6 +646,7 @@ add_executable(sight_vrm_transform_interop_test
     tests/vrm_transform_interop_test.cpp src/vrm/vrm_asset.cpp
     src/vrm/vrm_tracking.cpp)
 target_include_directories(sight_vrm_transform_interop_test PRIVATE src)
+target_link_libraries(sight_vrm_transform_interop_test PRIVATE nlohmann_json::nlohmann_json)
 target_compile_options(sight_vrm_transform_interop_test PRIVATE -UNDEBUG)
 add_test(NAME sight_vrm_transform_interop_unit
     COMMAND sight_vrm_transform_interop_test)
@@ -650,11 +654,13 @@ add_test(NAME sight_vrm_transform_interop_unit
 add_executable(sight_vrm_body_tracking_test tests/vrm_body_tracking_test.cpp
     src/vrm/vrm_asset.cpp src/vrm/vrm_tracking.cpp)
 target_include_directories(sight_vrm_body_tracking_test PRIVATE src)
+target_link_libraries(sight_vrm_body_tracking_test PRIVATE nlohmann_json::nlohmann_json)
 target_compile_options(sight_vrm_body_tracking_test PRIVATE -UNDEBUG)
 add_test(NAME sight_vrm_body_tracking_unit COMMAND sight_vrm_body_tracking_test)
 add_executable(sight_vrm_hand_tracking_test tests/vrm_hand_tracking_test.cpp
     src/vrm/vrm_asset.cpp src/vrm/vrm_tracking.cpp)
 target_include_directories(sight_vrm_hand_tracking_test PRIVATE src)
+target_link_libraries(sight_vrm_hand_tracking_test PRIVATE nlohmann_json::nlohmann_json)
 target_compile_options(sight_vrm_hand_tracking_test PRIVATE -UNDEBUG)
 add_test(NAME sight_vrm_hand_tracking_unit COMMAND sight_vrm_hand_tracking_test)
 if(SIGHT_XVFB_RUN)

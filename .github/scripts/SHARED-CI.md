@@ -23,3 +23,9 @@ no explicit SDK lookup falls back to a system installation. Local
 OBS33 SDK configure was blocked by the host FFmpeg 6.1 versus required
 8.0; no system dependencies were changed. OBS33 remains a hosted
 qualification candidate, not a verified build.
+
+Hosted qualification run 45938738362 reached actual compilation on OBS32
+and configuration on OBS33. Both pinned SDK builds succeeded. Sight now
+installs and explicitly requires nlohmann JSON in both Linux workflows,
+and reads zero-valued OBS API minors correctly. OBS33 still requires a
+complete hosted build/test pass; header parsing alone is not qualification.

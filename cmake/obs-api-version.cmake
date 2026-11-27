@@ -1,0 +1,13 @@
+# API minor zero is valid (e.g. OBS 33.0); test presence, not truthiness.
+function(sight_read_obs_api_version header major_out minor_out)
+    file(READ "${header}" config)
+    string(REGEX MATCH "LIBOBS_API_MAJOR_VER[ \t]+([0-9]+)" major_match "${config}")
+    set(major "${CMAKE_MATCH_1}")
+    string(REGEX MATCH "LIBOBS_API_MINOR_VER[ \t]+([0-9]+)" minor_match "${config}")
+    set(minor "${CMAKE_MATCH_1}")
+    if("${major_match}" STREQUAL "" OR "${minor_match}" STREQUAL "")
+        message(FATAL_ERROR "Could not read LIBOBS_API version from ${header}")
+    endif()
+    set(${major_out} "${major}" PARENT_SCOPE)
+    set(${minor_out} "${minor}" PARENT_SCOPE)
+endfunction()

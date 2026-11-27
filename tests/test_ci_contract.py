@@ -55,6 +55,24 @@ class Contract(unittest.TestCase):
             self.assertEqual((package / "live-latent-lab-sight.so").read_bytes(), b"live-latent-lab-sight.so")
             self.assertEqual((package / "libonnxruntime.so.1.17.1").read_bytes(), b"libonnxruntime.so.1.17.1")
             self.assertEqual((data / "locale.ini").read_bytes(), b"data")
+    def test_obs_api_header_parsing_accepts_zero_and_rejects_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            header = root / "obs-config.h"
+            script = root / "parse.cmake"
+            script.write_text('include("'+str(ROOT / "cmake/obs-api-version.cmake")+'")\n'
+                              'sight_read_obs_api_version("'+str(header)+'" major minor)\n'
+                              'message(STATUS "API=${major}.${minor}")\n')
+            for major, minor in [(32, 2), (33, 0)]:
+                header.write_text(f"#define LIBOBS_API_MAJOR_VER {major}\n#define LIBOBS_API_MINOR_VER {minor}\n")
+                result = subprocess.run(["cmake", "-P", str(script)], capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(f"API={major}.{minor}", result.stdout)
+            header.write_text("#define LIBOBS_API_MAJOR_VER 33\n")
+            result = subprocess.run(["cmake", "-P", str(script)], capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Could not read LIBOBS_API version", result.stderr)
+
     def test_engine_pin_from_workflow(self):
         with tempfile.TemporaryDirectory() as tmp:
             workflow = Path(tmp) / "workflow.yml"

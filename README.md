@@ -92,7 +92,8 @@ official frontend API; other versions are unqualified.
 ## Build and verify
 
 Requirements: Linux, OBS 32 development headers and libobs, C++20,
-CMake, the matching ONNX Runtime 1.17.1, and xvfb-run for graphics tests.
+CMake, nlohmann JSON development headers (`nlohmann-json3-dev` on Ubuntu),
+the matching ONNX Runtime 1.17.1, and xvfb-run for graphics tests.
 The [pinned ONNX Runtime dependency](docs/onnx-runtime.md) is required for
 vision inference. Its headers, shared library and legal notices are retained;
 redistribution review remains open. A separately acquired MediaPipe runtime

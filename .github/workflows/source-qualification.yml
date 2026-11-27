@@ -28,7 +28,7 @@ jobs:
             libpulse-dev libasound2-dev libjansson-dev libdrm-dev libegl-dev \
             libgl-dev libopengl-dev libwayland-dev wayland-protocols \
             libxkbcommon-dev libx11-dev libx11-xcb-dev libxcb1-dev \
-            libxcb-xinput-dev libglib2.0-dev zlib1g-dev libopencv-dev libtesseract-dev
+            libxcb-xinput-dev libglib2.0-dev zlib1g-dev libopencv-dev libtesseract-dev nlohmann-json3-dev
       - name: Prepare pinned OBS 32.2 SDK
         run: bash .github/scripts/prepare-obs32-sdk.sh "$RUNNER_TEMP/obs" 32.2.0
       - name: Build and verify source-only candidate

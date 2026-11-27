@@ -1,6 +1,6 @@
 ci_dependencies(){
   command -v apt-get >/dev/null || { echo "Ubuntu qualification runner required" >&2; return 1; }
-  sudo apt-get install -y --no-install-recommends libopencv-dev libtesseract-dev
+  sudo apt-get install -y --no-install-recommends libopencv-dev libtesseract-dev nlohmann-json3-dev
 }
 ci_build(){
   # Existing clean, model-free gate owns configuration, native tests, and
