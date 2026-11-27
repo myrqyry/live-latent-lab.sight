@@ -1,0 +1,99 @@
+{
+  "date": "2026-11-26",
+  "device": "NVIDIA GeForce RTX 2070 SUPER (SM75, 8192 MiB)",
+  "driver": "615.71.09",
+  "nsight_systems": "2025.1.3",
+  "sd_cpp_revision": "532d2c15c430a785a712b2d94281f04e733008a4",
+  "resolution": [
+    512,
+    288
+  ],
+  "aligned_resolution": [
+    512,
+    320
+  ],
+  "cfg": 1,
+  "steps": 1,
+  "continuous_denoise": 0.35,
+  "taesd": true,
+  "fixture_sha256": {
+    "512x288-b.rgb": "ecc51311f5e3fa142c9891b85526da9317b1a4e5fc3cd2b4566323343d24cbf7",
+    "512x288-a.rgb": "a5e63bd8ef4cea8c992dd4570b9cc35781a76775a1891c57a718c8782ca038f1"
+  },
+  "library_sha256": {
+    "baseline": "8ab59077c9464b884be2a8ced54e166bd4611e989db00303e480a567eb50e769",
+    "graphs": "c3c1fe1e4998a983daf0c9d28840d4533e3f4796fdcb2158c62351b8a5910934"
+  },
+  "graph_comparison": {
+    "frames": 17,
+    "baseline": {
+      "cold_ms": 1307.75,
+      "median_ms": 172.80599999999998,
+      "p95_ms": 212.571,
+      "min_ms": 164.971,
+      "max_ms": 212.571
+    },
+    "candidate": {
+      "cold_ms": 1317.92,
+      "median_ms": 170.8715,
+      "p95_ms": 174.897,
+      "min_ms": 164.186,
+      "max_ms": 174.897
+    },
+    "median_speedup": 1.0113213730786,
+    "max_frame_mae": 0.0,
+    "mean_frame_mae": 0.0,
+    "byte_exact": true,
+    "pixel_parity": true,
+    "mae_limit": 0.2
+  },
+  "nsys": {
+    "profile_frames": 9,
+    "cuda_graph_launches": 0,
+    "cuda_kernel_launch_api_calls": 19334,
+    "kernel_time_percent": {
+      "fp16_implicit_gemm_conv": 34.4,
+      "softmax": 11.9,
+      "volta_sgemm_64x64_tn": 11.7,
+      "broadcast_add": 8.4,
+      "scale_f32": 5.5
+    },
+    "scope": "includes cold initialization, not a steady-state exclusive GPU profile"
+  },
+  "q8_comparison": {
+    "frames": 17,
+    "baseline": {
+      "cold_ms": 1307.75,
+      "median_ms": 172.80599999999998,
+      "p95_ms": 212.571,
+      "min_ms": 164.971,
+      "max_ms": 212.571
+    },
+    "q8": {
+      "cold_ms": 1497.07,
+      "median_ms": 174.949,
+      "p95_ms": 182.494,
+      "min_ms": 170.306,
+      "max_ms": 182.494
+    },
+    "median_speedup": 0.987750715922926,
+    "max_frame_mae": 0.2881198459201389
+  },
+  "model_weight_buffers_mb": {
+    "default": 1879.99,
+    "q8_0": 1564.52
+  },
+  "actual_obs_weight_switch": "default -> q8_0 -> default; original pixels restored exactly",
+  "native_sd_ctest": {
+    "passed": 14,
+    "failed": 0,
+    "skipped": 0
+  },
+  "decision": "retain graph-off library and default precision; Q8_0 optional memory mode; no reduction of CUDA headroom guard",
+  "limitations": [
+    "one controlled fixture pair, one timing run per variant",
+    "no evidence of real-model CUDA graph replay",
+    "no sustained full-resolution video or concurrency test",
+    "no runtime redistribution approval"
+  ]
+}

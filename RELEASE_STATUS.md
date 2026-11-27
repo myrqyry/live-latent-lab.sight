@@ -118,3 +118,22 @@ The original ONNX Runtime v1.17.1 upstream archive could not be fetched
 source provenance, clean-machine qualification and experimental feature
 promotion remain open. See [audit receipt](docs/qualification/curated-release-audit-20261126.json).
 No visibility change or publication.
+
+## Optional native diffusion integration (2026-11-26)
+
+Imported only maintained native generator/live-filter source, related unit
+and integration tests, shaders, and benchmark receipt from development.
+Updated the independent stable-diffusion.cpp gitlink to the verified
+public upstream revision 532d2c1; no private history or model assets copied.
+Both options default off; the curated tracking/vision registration remains
+unchanged when they are disabled. Native diffusion requires OpenCV.
+Configured and rebuilt with the existing locally qualified CUDA 12.9 SM75
+engine, CPU ONNX runtime and the curated vision build. All 20 selected
+CTest cases passed, including all 14 native diffusion cases, actual CUDA
+motion/temporal inference, live Q8/default restoration and recursive export,
+plus privacy, VRM, portrait, cutout, OCR and unified tracking checks.
+Optional technical stage: 25 files / 146109348 bytes, no MediaPipe test
+runtime or separately acquired model weights. Not a clean-machine source
+build of SD.cpp or redistribution approval. The older unvalidated legacy
+build and native neural-rendering worker are not promoted; neural model
+provenance must be resolved separately. See docs/native-diffusion.md.

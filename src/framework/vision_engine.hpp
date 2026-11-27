@@ -43,8 +43,15 @@ public:
         float control_strength = 0.8f;
         
         // Backend specific (defaults to -1/default)
-        int sample_method = -1;
+        int sample_method = -1; // Legacy OBS scene ID; -1 uses model defaults
         int scheduler = -1;
+        // Modern upstream samplers (e.g. er_sde) are string-based. Nonempty
+        // choices override the legacy IDs; empty leaves model/legacy selection.
+        std::string sample_method_name;
+        std::string scheduler_name;
+        float distilled_guidance = -1.0f; // negative = upstream model default
+        std::string cache_mode; // empty = upstream default
+        bool continuous_denoise = false; // opt-in SD1.x img2img noise-level schedule
     };
     
     struct EngineConfig {
@@ -58,7 +65,19 @@ public:
         std::string taesd_path;
         std::string controlnet_path;
         std::string lora_path;
+        // Recent models may ship split diffusion/text-encoder components.
+        // Leave each optional path empty unless a specific model needs it.
+        std::string diffusion_model_path;
+        std::string high_noise_diffusion_model_path;
+        std::string clip_l_path;
+        std::string clip_g_path;
+        std::string t5xxl_path;
+        std::string llm_path;
         bool flash_attn = false;
+        std::string backend_device; // explicit native device, empty uses existing policy
+        // Optional native experiments. Empty preserves upstream defaults.
+        std::string weight_type;
+        std::string conv_direct_mode;
     };
     
     // Lifecycle

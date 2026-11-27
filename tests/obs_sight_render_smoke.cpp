@@ -328,6 +328,12 @@ int main(int argc, char **argv)
     size_t count = 0;
     const char *name = nullptr;
     bool verified_only = true;
+    bool found_native_sd_live=false;
+#ifdef SIGHT_SMOKE_EXPECT_NATIVE_SD_LIVE
+    constexpr bool expect_native_sd_live=true;
+#else
+    constexpr bool expect_native_sd_live=false;
+#endif
     bool found_sketch = false, found_u2net = false, found_depth = false;
     bool found_receiver = false;
     bool found_router = false;
@@ -361,6 +367,8 @@ int main(int argc, char **argv)
             found_ocr=true;
         else if(std::strcmp(name,"sight_spatial_motion_filter")==0)
             found_flow=true;
+        else if(std::strcmp(name,"sight_native_sd_live_filter")==0)
+            found_native_sd_live=true;
         else
             verified_only = false;
     }
@@ -415,7 +423,7 @@ int main(int argc, char **argv)
             obs_shutdown();return 1;
         }
     }
-    if (count != 8+size_t(found_ocr)+size_t(found_flow) || !verified_only || !found_unified ||
+    if (count != 8+size_t(found_ocr)+size_t(found_flow)+size_t(expect_native_sd_live) || found_native_sd_live!=expect_native_sd_live || !verified_only || !found_unified ||
         !found_privacy || !found_sketch || !found_u2net || !found_depth ||
         !found_receiver || !found_router) {
         std::cerr << "FAIL: expected exactly the verified Sight filter set\n";

@@ -46,6 +46,12 @@ extern struct obs_source_info sight_spatial_motion_filter_info;
 extern struct obs_source_info sight_tracking_receiver_filter_info;
 extern struct obs_source_info sight_value_router_filter_info;
 extern struct obs_source_info sight_native_vrm_source_info;
+#ifdef SIGHT_HAVE_NATIVE_SD_IMAGE_SOURCE
+extern struct obs_source_info image_gen_source_info;
+#endif
+#ifdef SIGHT_HAVE_NATIVE_SD_LIVE_FILTER
+extern struct obs_source_info sight_native_sd_live_filter_info;
+#endif
 #ifdef SIGHT_HAVE_LIVE2D
 extern struct obs_source_info sight_native_live2d_source_info;
 #endif
@@ -101,6 +107,12 @@ bool obs_module_load(void)
     obs_register_source(&sight_tracking_receiver_filter_info);
     obs_register_source(&sight_value_router_filter_info);
     obs_register_source(&sight_native_vrm_source_info);
+#ifdef SIGHT_HAVE_NATIVE_SD_IMAGE_SOURCE
+    obs_register_source(&image_gen_source_info);
+#endif
+#ifdef SIGHT_HAVE_NATIVE_SD_LIVE_FILTER
+    obs_register_source(&sight_native_sd_live_filter_info);
+#endif
 #ifdef SIGHT_HAVE_LIVE2D
     obs_register_source(&sight_native_live2d_source_info);
     blog(LOG_INFO,"[Sight] SIGHT_NATIVE_LIVE2D_SOURCE_20261118");

@@ -1,0 +1,41 @@
+// Reproject the signed diffusion correction, not the entire old image.
+// The original full-resolution live frame remains authoritative.
+uniform float4x4 ViewProj;
+uniform texture2d image;
+uniform texture2d correction;
+uniform texture2d reference_image;
+uniform texture2d motion_grid;
+uniform float2 proxy_size;
+uniform float flow_enabled;
+sampler_state linear_sample {Filter=Linear;AddressU=Clamp;AddressV=Clamp;};
+struct VSInput {float4 pos:POSITION;float2 uv:TEXCOORD0;};
+struct VSOutput {float4 pos:POSITION;float2 uv:TEXCOORD0;};
+VSOutput VSMain(VSInput v_in){
+    VSOutput v;v.pos=mul(float4(v_in.pos.xyz,1.0),ViewProj);v.uv=v_in.uv;return v;
+}
+float match_reference(float4 current,float4 reference){
+    float4 e=abs(current-reference);
+    float error=max(max(e.r,e.g),max(e.b,e.a));
+    return 1.0-smoothstep(0.035,0.16,error);
+}
+float4 PSMain(VSOutput v_in):TARGET{
+    float2 uv=v_in.uv;
+    float4 original=image.Sample(linear_sample,uv);
+    float2 cell=uv*proxy_size-0.5;
+    float2 origin=(floor(cell)+0.5)/proxy_size;
+    float2 part=frac(cell);
+    float2 step=1.0/proxy_size;
+    float4 current=lerp(lerp(image.Sample(linear_sample,origin),image.Sample(linear_sample,origin+float2(step.x,0.0)),part.x),
+        lerp(image.Sample(linear_sample,origin+float2(0.0,step.y)),image.Sample(linear_sample,origin+step),part.x),part.y);
+    float3 motion=motion_grid.Sample(linear_sample,uv).rgb*flow_enabled;
+    float2 warped=uv+motion.xy/max(motion.z,0.001);
+    float c0=match_reference(current,reference_image.Sample(linear_sample,uv));
+    float c1=match_reference(current,reference_image.Sample(linear_sample,saturate(warped)))*saturate(motion.z);
+    if(warped.x<0.0||warped.y<0.0||warped.x>1.0||warped.y>1.0)c1=0.0;
+    float confidence=c0;
+    if(c1>c0+0.03){uv=warped;confidence=c1;}
+    // Straight RGB residual becomes premultiplied only at composition.
+    float3 delta=correction.Sample(linear_sample,uv).rgb;
+    return float4(clamp(original.rgb+delta*confidence*original.a,0.0,original.a),original.a);
+}
+technique Draw {pass {vertex_shader=VSMain(v_in);pixel_shader=PSMain(v_in);}}

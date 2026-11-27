@@ -32,6 +32,13 @@ for soname in "${needed[@]}"; do
     libonnxruntime.so|libonnxruntime.so.*)
       require_file "bin/64bit/$soname"
       ort_found=1 ;;
+    libstable-diffusion.so)
+      require_file "bin/64bit/$soname"
+      require_file "data/sight-generator-preview.effect"
+      require_file "data/licenses/stable-diffusion.cpp/LICENSE"
+      require_file "data/licenses/ggml/LICENSE"
+      require_file "data/licenses/utf8proc/LICENSE.md"
+      require_file "data/licenses/oniguruma/COPYING" ;;
     libLiteRt.so)
       require_file "bin/64bit/$soname"
       require_file "data/licenses/litert/LICENSE" ;;

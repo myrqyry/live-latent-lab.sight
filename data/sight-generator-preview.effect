@@ -1,0 +1,52 @@
+// Display-only, camera-aware interpolation between two completed images.
+uniform float4x4 ViewProj;
+uniform texture2d image;
+uniform texture2d previous_image;
+uniform float2 image_size;
+uniform float4 old_transform;
+uniform float4 new_transform;
+uniform float phase;
+uniform texture2d residual_flow;
+uniform float flow_enabled;
+sampler_state linear_sample {Filter=Linear;AddressU=Clamp;AddressV=Clamp;};
+struct VSInput {float4 pos:POSITION;float2 uv:TEXCOORD0;};
+struct VSOutput {float4 pos:POSITION;float2 uv:TEXCOORD0;};
+VSOutput VSMain(VSInput v_in){
+    VSOutput v;v.pos=mul(float4(v_in.pos.xyz,1.0),ViewProj);v.uv=v_in.uv;return v;
+}
+float2 rotate_xy(float2 p,float angle){
+    float c=cos(angle),s=sin(angle);
+    return float2(c*p.x-s*p.y,s*p.x+c*p.y);
+}
+float4 PSMain(VSOutput v_in):TARGET{
+    float2 uv=v_in.uv;
+    float2 pixel=(uv-0.5)*image_size;
+    float2 a=rotate_xy(pixel-old_transform.zw,-old_transform.y)/old_transform.x;
+    float2 b=rotate_xy(pixel,new_transform.y)*new_transform.x+new_transform.zw;
+    float4 old_color=previous_image.Sample(linear_sample,saturate(a/image_size+0.5));
+    float4 new_color=image.Sample(linear_sample,saturate(b/image_size+0.5));
+    float4 camera_color=lerp(old_color,new_color,phase);
+    if(flow_enabled<=0.0||phase<=0.0||phase>=1.0)return camera_color;
+    // Flow is estimated in the final camera's coordinates, between
+    // the transformed init image and the actual new diffusion output.
+    float2 base=b/image_size+0.5;
+    float2 q=base;
+    float3 f=float3(0.0,0.0,0.0);
+    // Invert q+(1-phase)*backward(q)=base by two bounded iterations.
+    for(int i=0;i<2;i++){
+        f=residual_flow.Sample(linear_sample,saturate(q)).rgb;
+        q=base-(1.0-phase)*f.xy/max(f.z,0.001);
+    }
+    f=residual_flow.Sample(linear_sample,saturate(q)).rgb;
+    float2 delta=f.xy/max(f.z,0.001);
+    float2 r=q+delta;
+    if(q.x<0.0||q.y<0.0||q.x>1.0||q.y>1.0||
+       r.x<0.0||r.y<0.0||r.x>1.0||r.y>1.0)return camera_color;
+    float2 old_delta=rotate_xy((r-base)*image_size,-old_transform.y-new_transform.y)/
+        (old_transform.x*new_transform.x);
+    float4 aligned_old=previous_image.Sample(linear_sample,saturate((a+old_delta)/image_size+0.5));
+    float4 aligned_new=image.Sample(linear_sample,q);
+    float confidence=smoothstep(0.35,0.75,f.z);
+    return lerp(camera_color,lerp(aligned_old,aligned_new,phase),confidence);
+}
+technique Draw {pass {vertex_shader=VSMain(v_in);pixel_shader=PSMain(v_in);}}

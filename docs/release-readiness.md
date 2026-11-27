@@ -26,9 +26,11 @@ separate from the experimental all-effects build.
   Camera, Tracking (face/body/hand/holistic/object and optional RTMW), Privacy V2, Tracking Signal
   Receiver, Value Router, and Native VRM Avatar. The source registrations
   in src/plugin-main.cpp are authoritative.
-- **Experimental effects excluded:** Stable Diffusion, LiteRT, and
-  unvalidated legacy effects. They exist in the repository but are behind
-  SIGHT_ENABLE_UNVERIFIED_EFFECTS=ON.
+- **Optional native diffusion:** the generator and live filter are
+  separately opt-in, using the pinned public stable-diffusion.cpp source.
+  See [native diffusion](native-diffusion.md) for qualified scope. The
+  legacy all-effects path is unqualified and not a release build.
+  Neural rendering remains outside the candidate pending provenance review.
 - **Optional Live2D source:** retained behind the existing local SDK build option.
   See [native Live2D development and publication boundary](live2d-native.md).
   The default candidate excludes Cubism; an enabled binary is not cleared.

@@ -62,6 +62,20 @@ runtime libraries. See [optional CUDA](docs/onnx-cuda.md), [model setup](docs/mo
 [MediaPipe ABI notes](docs/mediapipe-1.2.3.md). Privacy V2 is experimental;
 it is not a guarantee of anonymity or complete redaction.
 
+## Optional native diffusion (experimental)
+
+The native generator and live image-to-image filter are available as
+opt-in additions to the validated build. They support local checkpoints,
+recursive feedback, camera/object-motion preview, temporal stabilization,
+and an optional Q8_0 weight mode in Live Diffusion. Real CUDA acceptance
+passed on Turing (RTX 2070 SUPER); other devices and sustained
+high-resolution performance have not been qualified.
+
+See [native diffusion setup](docs/native-diffusion.md) for source builds,
+requirements, and verification. Neither checkpoints nor proprietary GPU
+model assets are included. The neural-rendering worker remains outside this
+candidate pending a separate source/model provenance review.
+
 ## Plugin preferences
 
 With Qt6 Widgets available, open **Settings → Plugins → LLL.sight**

@@ -7,6 +7,8 @@ option(SIGHT_ENABLE_UNVERIFIED_EFFECTS
     "Build and register the legacy experimental effects (requires LiteRT and SD)" OFF)
 if(NOT SIGHT_ENABLE_UNVERIFIED_EFFECTS)
     include(cmake/validated_effects.cmake)
+    include(cmake/native_sd_generator.cmake)
+    include(cmake/native_sd_live.cmake)
     return()
 endif()
 
