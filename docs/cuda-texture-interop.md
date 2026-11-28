@@ -194,3 +194,39 @@ Counts cover instrumented capture/output pixel vectors only; OpenCV
 internals, ONNX allocations and driver synchronization are not measured.
 This is a reusable staged processing optimization, not GPU-resident
 tensor binding, zero-readback or a measured end-to-end speedup.
+
+## Depth Anything device tensor I/O (2026-11-28)
+
+Optional Linux build flag `SIGHT_ENABLE_CUDA_DEPTH_IO` defaults to the
+CUDA texture-interop flag, but works independently of OpenGL interop.
+When built and the depth session selects CUDA, RGB normalization, bound
+NCHW input and float depth output, parallel finite-value/min/max reduction
+and byte quantization stay on device. The worker uploads compact RGB8 via
+reusable pinned memory on its own ordered stream and downloads only an
+R8 depth map and four-byte validity flag. ORT provider execution is
+ordered explicitly at the binding boundary. CPU temporal history and
+shared snapshot behavior remain unchanged. No render-thread CUDA calls
+are introduced here. Explicit SIGHT_ONNX_DEVICE=cuda requires CUDA
+rather than silently accepting CPU initialization. For qualification,
+SIGHT_DEPTH_CUDA_IO=host retains the previous tensor path;
+SIGHT_DEPTH_CUDA_IO=device requires the new path and rejects CPU or
+builds without the feature. Kernels are compiled into embedded PTX; no
+extra runtime asset, model, or CUDA runtime library is distributed.
+
+Real Depth Anything V2 on RTX 2070 SUPER, ORT CUDA 1.30.0:
+10 timed iterations per size after three warmups, same provider in
+host and device comparisons. Final host -> device medians:
+252x140 6.725 -> 5.417 ms;
+336x196 9.905 -> 7.787 ms;
+518x294 17.525 -> 16.851 ms.
+Maximum per-pixel difference 1/255 at each size; mean absolute byte
+difference <= 0.000471. Device boundary payloads exactly 3N uploaded
+and N+4 downloaded vs nominal 12N and 4N host tensor payloads. The
+approximately 75% reduction is logical payload, not a PCIe profiler
+measurement; ORT internal copies/CPU partitions are not counted.
+Test verified one preparation per size, reuse, resize back, reload,
+invalid dimensions and CPU/device conflict. Actual forced device-mode
+OBS Depth Camera resize and change-aware history, shared snapshot
+expiry/recovery and Preprocessors Depth Anything tests passed. Ordinary
+CPU build passed 57 required tests. No end-to-end render FPS claim.
+Cutout and the other preprocessors still have staged tensor I/O.

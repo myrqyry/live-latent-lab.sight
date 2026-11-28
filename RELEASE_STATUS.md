@@ -340,3 +340,18 @@ bounded CUDA depth tolerance in the reuse test. New stats ABI documented
 and checked, 57/57 model-free cases passed, including missing-model
 passthrough. Host staging remains, no GPU-native I/O binding or measured
 end-to-end speedup. No install or push.
+
+## Depth Anything CUDA device tensor I/O (2026-11-28)
+
+Optional Linux CUDA build with embedded PTX, reusable device tensors,
+pinned RGB input, GPU normalization/reduction/quantization, bounded
+byte-map download; shared by Depth Camera and Depth Anything
+Preprocessors. Final actual model benchmark on RTX 2070 SUPER:
+252x140 6.725->5.417 ms, 336x196 9.905->7.787 ms,
+518x294 17.525->16.851 ms medians; max difference 1/255.
+Boundary payload 3N + N+4 bytes instead of nominal 16N (not physical
+PCIe instrumentation). Reuse/resize/reload/CPU conflict tested.
+Actual OBS device-mode depth and preprocessor output, history,
+resize and snapshot lifecycle passed. Ordinary CPU regression
+57/57. CPU capture, temporal and snapshot consumers retained; other
+models and cross-platform builds not qualified. No install/push.

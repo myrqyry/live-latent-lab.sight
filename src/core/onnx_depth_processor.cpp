@@ -11,10 +11,25 @@
 #include <thread>
 #include <iostream>
 
+#ifdef SIGHT_WITH_CUDA_DEPTH_IO
+#include "depth-cuda-io.inc"
+#endif
+
 namespace lll {
+OnnxDepthProcessor::OnnxDepthProcessor()=default;
+OnnxDepthProcessor::~OnnxDepthProcessor()=default;
+DepthTensorIOStats OnnxDepthProcessor::tensor_io_stats() const {
+#ifdef SIGHT_WITH_CUDA_DEPTH_IO
+    if(device_io_)return device_io_->stats;
+#endif
+    return {};
+}
 
 bool OnnxDepthProcessor::load(const std::string &model_path, bool prefer_gpu)
 {
+#ifdef SIGHT_WITH_CUDA_DEPTH_IO
+    device_io_.reset();
+#endif
     session_.reset();
     provider_=nullptr;
     last_error_.clear();
@@ -31,7 +46,9 @@ bool OnnxDepthProcessor::load(const std::string &model_path, bool prefer_gpu)
             std::min(4u, std::max(1u, logical / 2u))));
         options.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
         options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-        auto candidate = open_onnx_session(environment_, model_path.c_str(), options, prefer_gpu, &provider_);
+        const char* requested=std::getenv("SIGHT_ONNX_DEVICE");
+        const bool require_cuda=prefer_gpu&&requested&&std::string_view(requested)=="cuda";
+        auto candidate = open_onnx_session(environment_, model_path.c_str(), options, prefer_gpu, &provider_,require_cuda);
         if (candidate->GetInputCount() != 1 || candidate->GetOutputCount() != 1)
             throw std::runtime_error("Depth Anything needs one input and one output");
         auto in_type = candidate->GetInputTypeInfo(0);
@@ -53,9 +70,25 @@ bool OnnxDepthProcessor::load(const std::string &model_path, bool prefer_gpu)
         output_name_ = output.get();
         if (input_name_ != "pixel_values" || output_name_ != "predicted_depth")
             throw std::runtime_error("Expected Depth Anything pixel_values -> predicted_depth");
+#ifdef SIGHT_WITH_CUDA_DEPTH_IO
+        const char* io=std::getenv("SIGHT_DEPTH_CUDA_IO");
+        const bool force_device=io&&std::string_view(io)=="device";
+        const bool host=io&&std::string_view(io)=="host";
+        const bool cuda=provider_&&std::string_view(provider_).find("CUDA")!=std::string_view::npos;
+        if(force_device&&!cuda)throw std::runtime_error("Device depth I/O requires CUDA provider");
+        if(cuda&&!host){
+            auto device=std::make_unique<DeviceIO>();device->init();
+            device_io_=std::move(device);
+            provider_="ONNX Runtime CUDA (bound depth tensors)";
+        }
+#else
+        const char* io=std::getenv("SIGHT_DEPTH_CUDA_IO");
+        if(io&&std::string_view(io)=="device")throw std::runtime_error("Device depth I/O unavailable in this build");
+#endif
         session_ = std::move(candidate);
         return true;
     } catch (const std::exception &e) {
+        provider_=nullptr;
         last_error_ = e.what();
         return false;
     }
@@ -69,6 +102,12 @@ bool OnnxDepthProcessor::estimate(const uint8_t *rgb, uint32_t width, uint32_t h
         width % 14 || height % 14 || width > 560 || height > 560)
         return false;
     try {
+#ifdef SIGHT_WITH_CUDA_DEPTH_IO
+        if(device_io_){
+            device_io_->run(*session_,input_name_,output_name_,rgb,width,height,depth);
+            return true;
+        }
+#endif
         const size_t plane = static_cast<size_t>(width) * height;
         static constexpr float mean[] = {0.485f, 0.456f, 0.406f};
         static constexpr float stdv[] = {0.229f, 0.224f, 0.225f};

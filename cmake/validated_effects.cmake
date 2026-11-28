@@ -1666,3 +1666,37 @@ if(SIGHT_ENABLE_CUDA_TEXTURE_INTEROP)
     target_link_libraries(live-latent-lab-sight PRIVATE CUDA::cuda_driver OpenGL::GL)
     install(FILES "${_sketch_ptx}" DESTINATION data)
 endif()
+
+# Worker-only device tensor I/O, independent of graphics interop.
+option(SIGHT_ENABLE_CUDA_DEPTH_IO "Bind Depth Anything tensors to CUDA device memory" ${SIGHT_ENABLE_CUDA_TEXTURE_INTEROP})
+if(SIGHT_ENABLE_CUDA_DEPTH_IO)
+    if(NOT EXISTS "${SIGHT_ORT_LIB_DIR}/libonnxruntime_providers_cuda.so")
+        message(FATAL_ERROR "Depth device I/O requires a matching CUDA ONNX Runtime SDK")
+    endif()
+    find_package(CUDAToolkit REQUIRED)
+    set(SIGHT_CUDA_TEXTURE_ARCH "75" CACHE STRING "Minimum CUDA virtual architecture for texture kernels")
+    set(_depth_ptx "${CMAKE_CURRENT_BINARY_DIR}/depth-cuda.ptx")
+    set(_depth_header "${CMAKE_CURRENT_BINARY_DIR}/sight-depth-cuda-ptx.hpp")
+    add_custom_command(OUTPUT "${_depth_header}"
+        COMMAND "${CUDAToolkit_NVCC_EXECUTABLE}" --ptx "-arch=compute_${SIGHT_CUDA_TEXTURE_ARCH}" -O3 --fmad=false --prec-div=true
+                "${CMAKE_CURRENT_SOURCE_DIR}/src/core/depth-cuda-kernels.cu" -o "${_depth_ptx}"
+        COMMAND "${CMAKE_COMMAND}" "-DINPUT=${_depth_ptx}" "-DOUTPUT=${_depth_header}"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed-depth-ptx.cmake"
+        DEPENDS src/core/depth-cuda-kernels.cu cmake/embed-depth-ptx.cmake
+        BYPRODUCTS "${_depth_ptx}" VERBATIM)
+    add_custom_target(sight_depth_cuda_ptx DEPENDS "${_depth_header}")
+    add_executable(sight_depth_cuda_io_test tests/verify-depth-cuda-io.cpp src/core/onnx_depth_processor.cpp)
+    target_include_directories(sight_depth_cuda_io_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" "${SIGHT_ORT_INCLUDE}")
+    target_link_libraries(sight_depth_cuda_io_test PRIVATE "${SIGHT_ORT_LIBRARY}")
+    set_target_properties(sight_depth_cuda_io_test PROPERTIES BUILD_RPATH "${SIGHT_ORT_LIB_DIR}")
+    foreach(target IN ITEMS live-latent-lab-sight sight_depth_cuda_io_test)
+        add_dependencies(${target} sight_depth_cuda_ptx)
+        target_include_directories(${target} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+        target_compile_definitions(${target} PRIVATE SIGHT_WITH_CUDA_DEPTH_IO)
+        target_link_libraries(${target} PRIVATE CUDA::cuda_driver)
+    endforeach()
+    if(SIGHT_DEPTH_MODEL)
+        add_test(NAME sight_depth_cuda_device_io COMMAND sight_depth_cuda_io_test "${SIGHT_DEPTH_MODEL}")
+        set_tests_properties(sight_depth_cuda_device_io PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+    endif()
+endif()
