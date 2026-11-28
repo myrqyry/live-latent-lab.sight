@@ -49,6 +49,7 @@ if [[ "$ort_found" != 1 ]]; then
   exit 1
 fi
 require_file "data/sight-tracking-overlay.effect"
+require_file "data/sight-touch-field.effect"
 require_file "data/sight-depth-camera.effect"
 require_file "data/locale/en-US.ini"
 require_file "data/licenses/sight/LICENSE"

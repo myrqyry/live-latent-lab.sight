@@ -1365,6 +1365,36 @@ obs_properties_t* unified_properties(void* data){
     return p;
 }
 const char* name_unified(void*){return "lll.sight Tracking";}
+// Hidden compatibility types use the maintained fixed-mode pipeline,
+// not a fork or the older platform-specific runtime loader.
+template<Mode M> void* create_legacy(obs_data_t* d,obs_source_t* source){
+    return create_common(d,source,M);
+}
+template<Mode M> void update_legacy(void* data,obs_data_t* d){
+    update_mode(static_cast<TrackingFilter*>(data),d,M);
+}
+template<Mode M> obs_properties_t* properties_legacy(void* data){
+    auto* p=obs_properties_create();
+    auto* settings=data?obs_source_get_settings(static_cast<TrackingFilter*>(data)->context):nullptr;
+#ifdef SIGHT_HAVE_RTMW
+    if constexpr(M==Mode::Rtmw) add_rtmw_properties(p,"");
+    else
+#endif
+        add_properties(p,settings,M,"");
+    if(settings)obs_data_release(settings);
+    sight_backend::add(p,static_cast<TrackingFilter*>(data));
+    return p;
+}
+
+const char* name_face(void*) {return "lll.sight Face Motion (MediaPipe Tasks)";}
+const char* name_body(void*) {return "lll.sight Body Motion (MediaPipe Tasks)";}
+const char* name_hand(void*) {return "lll.sight Hand & Gesture Motion (MediaPipe Tasks)";}
+const char* name_holistic(void*) {return "lll.sight Holistic Tracking (MediaPipe 1.2.3)";}
+const char* name_objects(void*) {return "lll.sight Object Tracking (MediaPipe 1.2.3)";}
+
+#ifdef SIGHT_HAVE_RTMW
+const char* name_rtmw(void*){return "lll.sight WholeBody Tracking (RTMW GPU)";}
+#endif
 void render(void *data,gs_effect_t*) {
     auto *f=static_cast<TrackingFilter*>(data);
     auto *target=obs_filter_get_target(f->context);
@@ -1484,6 +1514,74 @@ void render(void *data,gs_effect_t*) {
         blog(LOG_INFO,"[Sight/Holistic] SIGHT_HOLISTIC_GPU_OVERLAY_20261112_J728 composite frame drawn");
 }
 } // namespace
+
+struct obs_source_info sight_face_motion_filter_info = {
+    .id="sight_face_motion_filter",
+    .type=OBS_SOURCE_TYPE_FILTER,
+    // Retain existing saved OBS filters, but create new tracking through
+    // lll.sight Unified Tracking (no duplicate choices in Add Filter).
+    .output_flags=OBS_SOURCE_VIDEO|OBS_SOURCE_CUSTOM_DRAW|OBS_SOURCE_CAP_OBSOLETE,
+    .get_name=name_face,.create=create_legacy<Mode::Face>,.destroy=destroy,
+    .get_defaults=defaults_face,.get_properties=properties_legacy<Mode::Face>,
+    .update=update_legacy<Mode::Face>,.video_render=render,
+};
+struct obs_source_info sight_body_motion_filter_info = {
+    .id="sight_body_motion_filter",
+    .type=OBS_SOURCE_TYPE_FILTER,
+    // Retain existing saved OBS filters, but create new tracking through
+    // lll.sight Unified Tracking (no duplicate choices in Add Filter).
+    .output_flags=OBS_SOURCE_VIDEO|OBS_SOURCE_CUSTOM_DRAW|OBS_SOURCE_CAP_OBSOLETE,
+    .get_name=name_body,.create=create_legacy<Mode::Body>,.destroy=destroy,
+    .get_defaults=defaults_body,.get_properties=properties_legacy<Mode::Body>,
+    .update=update_legacy<Mode::Body>,.video_render=render,
+};
+
+struct obs_source_info sight_hand_motion_filter_info = {
+    .id="sight_hand_motion_filter",
+    .type=OBS_SOURCE_TYPE_FILTER,
+    // Retain existing saved OBS filters, but create new tracking through
+    // lll.sight Unified Tracking (no duplicate choices in Add Filter).
+    .output_flags=OBS_SOURCE_VIDEO|OBS_SOURCE_CUSTOM_DRAW|OBS_SOURCE_CAP_OBSOLETE,
+    .get_name=name_hand,.create=create_legacy<Mode::Hand>,.destroy=destroy,
+    .get_defaults=defaults_hand,.get_properties=properties_legacy<Mode::Hand>,
+    .update=update_legacy<Mode::Hand>,.video_render=render,
+};
+
+
+struct obs_source_info sight_holistic_motion_filter_info = {
+    .id="sight_holistic_motion_filter",
+    .type=OBS_SOURCE_TYPE_FILTER,
+    // Retain existing saved OBS filters, but create new tracking through
+    // lll.sight Unified Tracking (no duplicate choices in Add Filter).
+    .output_flags=OBS_SOURCE_VIDEO|OBS_SOURCE_CUSTOM_DRAW|OBS_SOURCE_CAP_OBSOLETE,
+    .get_name=name_holistic,.create=create_legacy<Mode::Holistic>,.destroy=destroy,
+    .get_defaults=defaults_holistic,.get_properties=properties_legacy<Mode::Holistic>,
+    .update=update_legacy<Mode::Holistic>,.video_render=render,
+};
+
+struct obs_source_info sight_object_tracking_filter_info = {
+    .id="sight_object_tracking_filter",
+    .type=OBS_SOURCE_TYPE_FILTER,
+    // Retain existing saved OBS filters, but create new tracking through
+    // lll.sight Unified Tracking (no duplicate choices in Add Filter).
+    .output_flags=OBS_SOURCE_VIDEO|OBS_SOURCE_CUSTOM_DRAW|OBS_SOURCE_CAP_OBSOLETE,
+    .get_name=name_objects,.create=create_legacy<Mode::Object>,.destroy=destroy,
+    .get_defaults=defaults_objects,.get_properties=properties_legacy<Mode::Object>,
+    .update=update_legacy<Mode::Object>,.video_render=render,
+};
+
+#ifdef SIGHT_HAVE_RTMW
+struct obs_source_info sight_rtmw_tracking_filter_info = {
+    .id="sight_rtmw_tracking_filter",
+    .type=OBS_SOURCE_TYPE_FILTER,
+    // Retain existing saved OBS filters, but create new tracking through
+    // lll.sight Unified Tracking (no duplicate choices in Add Filter).
+    .output_flags=OBS_SOURCE_VIDEO|OBS_SOURCE_CUSTOM_DRAW|OBS_SOURCE_CAP_OBSOLETE,
+    .get_name=name_rtmw,.create=create_legacy<Mode::Rtmw>,.destroy=destroy,
+    .get_defaults=defaults_rtmw,.get_properties=properties_legacy<Mode::Rtmw>,
+    .update=update_legacy<Mode::Rtmw>,.video_render=render,
+};
+#endif
 
 struct obs_source_info sight_unified_tracking_filter_info = {
     .id="sight_unified_tracking_filter",

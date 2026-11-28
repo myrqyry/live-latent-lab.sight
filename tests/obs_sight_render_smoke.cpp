@@ -83,6 +83,12 @@ obs_data_t* tracking_settings(obs_data_t* raw,const std::string& mode) {
     return result;
 }
 obs_source_t* create_tracker(const char* name,obs_data_t* raw,const std::string& mode){
+    if(std::getenv("SIGHT_SMOKE_LEGACY_TRACKER")){
+        const char* id=mode=="face"?"sight_face_motion_filter":mode=="body"?"sight_body_motion_filter":
+          mode=="hand"?"sight_hand_motion_filter":mode=="holistic"?"sight_holistic_motion_filter":
+          mode=="object"?"sight_object_tracking_filter":"sight_rtmw_tracking_filter";
+        return obs_source_create(id,name,raw,nullptr);
+    }
     auto* settings=tracking_settings(raw,mode);
     auto* result=obs_source_create("sight_unified_tracking_filter",name,settings,nullptr);
     obs_data_release(settings);return result;
@@ -325,7 +331,7 @@ int main(int argc, char **argv)
         obs_shutdown();
         return 1;
     }
-    size_t count = 0;
+    size_t count = 0, index = 0;
     const char *name = nullptr;
     bool verified_only = true;
     bool found_native_sd_live=false;
@@ -354,12 +360,23 @@ int main(int argc, char **argv)
     const char *selected_filter = std::getenv("SIGHT_SMOKE_EFFECT");
     if (!selected_filter || !*selected_filter)
         selected_filter = "neural_enhance_filter";
-    while (obs_enum_filter_types(count++, &name)) {
+    while (obs_enum_filter_types(index++, &name)) {
+        ++count;
         std::cout << "registered_filter=" << name << "\n";
         const auto* label = obs_source_get_display_name(name);
         if (!label || std::strncmp(label, "lll.sight ", 10) != 0) {
             std::cerr << "FAIL: filter display namespace: " << name << "\n";
             obs_shutdown();return 1;
+        }
+        // Known hidden aliases are intentionally excluded from the visible-filter count.
+        if (obs_get_source_output_flags(name)&OBS_SOURCE_CAP_OBSOLETE) {
+            bool known=false;
+            for(const char* id:{"sight_face_motion_filter","sight_body_motion_filter","sight_hand_motion_filter",
+                "sight_holistic_motion_filter","sight_object_tracking_filter","sight_rtmw_tracking_filter","sight_touch_field_filter"})
+                if(!strcmp(name,id))known=true;
+            if(!known)verified_only=false;
+            --count;
+            continue;
         }
         if (std::strcmp(name, "neural_enhance_filter") == 0)
             found_sketch = true;
@@ -439,7 +456,7 @@ int main(int argc, char **argv)
             obs_shutdown();return 1;
         }
     }
-    if (count != 8+size_t(expect_preprocessors)+size_t(found_ocr)+size_t(found_flow)+size_t(expect_native_sd_live)+size_t(expect_neural_rendering) || found_preprocessors!=expect_preprocessors || found_neural_rendering!=expect_neural_rendering || found_native_sd_live!=expect_native_sd_live || !verified_only || !found_unified ||
+    if (count != 7+size_t(expect_preprocessors)+size_t(found_ocr)+size_t(found_flow)+size_t(expect_native_sd_live)+size_t(expect_neural_rendering) || found_preprocessors!=expect_preprocessors || found_neural_rendering!=expect_neural_rendering || found_native_sd_live!=expect_native_sd_live || !verified_only || !found_unified ||
         !found_privacy || !found_sketch || !found_u2net || !found_depth ||
         !found_receiver || !found_router) {
         std::cerr << "FAIL: expected exactly the verified Sight filter set\n";
