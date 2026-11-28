@@ -817,6 +817,15 @@ target_link_libraries(sight_animegan_model_test PRIVATE "${SIGHT_ORT_LIBRARY}")
 set_target_properties(sight_animegan_model_test PROPERTIES
     BUILD_RPATH "${SIGHT_ORT_LIB_DIR}")
 
+add_executable(sight_sketch_handoff_test tests/sketch_handoff_test.cpp
+    src/core/enhancement_processor.cpp src/common/sight-log.cpp)
+target_include_directories(sight_sketch_handoff_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src" "${SIGHT_ORT_INCLUDE}" "${SIGHT_OBS_INCLUDE}")
+target_compile_definitions(sight_sketch_handoff_test PRIVATE USE_ONNX_MEDIAPIPE)
+target_link_libraries(sight_sketch_handoff_test PRIVATE "${SIGHT_OBS_LIBRARY}" "${SIGHT_ORT_LIBRARY}")
+set_target_properties(sight_sketch_handoff_test PROPERTIES BUILD_RPATH "${SIGHT_ORT_LIB_DIR}")
+add_test(NAME sight_sketch_handoff_unit COMMAND sight_sketch_handoff_test)
+
 # Explicitly exercise the no-ONNX build's unavailable-backend contract.
 add_executable(sight_segmentation_unavailable_test
     tests/segmentation_unavailable_test.cpp src/core/segmentation_processor.cpp)

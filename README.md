@@ -50,6 +50,12 @@ The expanded Linux build registers the eleven entries above. Preprocessors, Spat
 and Text Obfuscation require optional system libraries; WholeBody needs
 LiteRT GPU support. Native Live2D remains an [optional local development build](docs/live2d-native.md) using a separately acquired official SDK; it is excluded from the default preview binary, not removed from the source. Unvalidated generative effects remain gated.
 
+Portrait Sketch reuses capture, inference and upload workspaces. Its
+render-side capture, submission and result exchange use non-waiting
+mutex attempts; busy handoffs skip a capture or retain the previous
+valid texture. Generation tags reject obsolete results. GPU readback
+and texture upload remain synchronous graphics operations.
+
 Subject Cutout supports U²-Net/U²-NetP, MODNet and Longpipe, per-instance
 Auto/CPU/required CUDA selection, adaptive optional flow and bounded shared
 matte/motion. See [cutout models](docs/model-downloads.md#subject-cutout-models),

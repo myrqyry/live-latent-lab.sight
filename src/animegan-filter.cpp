@@ -74,7 +74,7 @@ struct AnimeGanFilter {
     std::string requested_path;
     std::string active_path;
     sight_backend::Status backend_status;
-    uint64_t model_generation = 0;
+    std::atomic<uint64_t> model_generation{0};
     uint32_t frame_width = 0, frame_height = 0;
     std::vector<uint8_t> input_rgba;
     std::vector<uint8_t> capture_scratch; // graphics-thread owned
@@ -85,7 +85,10 @@ struct AnimeGanFilter {
     std::vector<uint8_t> output_rgba;
     uint32_t output_width = 0, output_height = 0;
     bool new_output = false;
-    std::atomic<bool> reset_output_texture{false};
+    uint64_t output_generation=0; // guarded by output_mutex
+    std::vector<uint8_t> upload_rgba; // graphics-thread owned
+    uint32_t upload_width=0,upload_height=0;
+    uint64_t upload_generation=0,texture_generation=0;
     bool announced_first_frame = false;
 
     // Graphics-thread resources; never touched by inference worker.
@@ -213,6 +216,7 @@ void worker_main(AnimeGanFilter *f)
             frame.swap(f->input_rgba);
             f->output_width = w;
             f->output_height = h;
+            f->output_generation = generation;
             f->new_output = true;
             f->backend_status.health.record(true,inference_ms,sight_backend::InferenceHealth::Clock::now());
             ++f->completed;
@@ -315,10 +319,7 @@ void update(void *data, obs_data_t *settings)
         f->backend_status.health={};
         ++f->model_generation;
         f->announced_first_frame = false;
-        f->reset_output_texture = true;
-    }
-    {
-        std::lock_guard lock(f->output_mutex);
+        std::lock_guard out_lock(f->output_mutex);
         f->new_output = false;
         f->output_rgba.clear();
     }
@@ -412,6 +413,47 @@ const char *name(void *)
     return "lll.sight Portrait Sketch (ControlNet Prep)";
 }
 
+// The graphics thread is the sole capture producer. Inspect the gate
+// without claiming it; commit the claim only with a successful submission.
+// A busy mutex or failed readback therefore cannot strand an in-flight flag.
+bool try_capture(AnimeGanFilter *f,uint64_t &generation,uint32_t *detail=nullptr)
+{
+    std::unique_lock lock(f->input_mutex,std::try_to_lock);
+    if(!lock){if(f->model_ready)++f->skipped;return false;}
+    if(!f->model_ready||f->load_requested||f->stopping)return false;
+    if(f->capture_in_flight){++f->skipped;return false;}
+    generation=f->model_generation.load();
+    if(detail)*detail=f->detail_size.load();
+    return true;
+}
+bool try_submit(AnimeGanFilter *f,uint64_t generation,uint32_t w,uint32_t h)
+{
+    std::unique_lock lock(f->input_mutex,std::try_to_lock);
+    if(!lock||generation!=f->model_generation||!f->model_ready||
+       f->load_requested||f->stopping||f->capture_in_flight||f->frame_pending||
+       f->capture_scratch.size()!=static_cast<size_t>(w)*h*4){
+        ++f->skipped;return false;
+    }
+    f->input_rgba.swap(f->capture_scratch);
+    f->frame_width=w;f->frame_height=h;
+    f->frame_pending=f->capture_in_flight=true;
+    ++f->captures;
+    lock.unlock();
+    f->frame_cv.notify_one();
+    return true;
+}
+bool try_take_output(AnimeGanFilter *f)
+{
+    std::unique_lock lock(f->output_mutex,std::try_to_lock);
+    if(!lock||!f->new_output)return false;
+    f->new_output=false;
+    if(f->output_generation!=f->model_generation.load())return false;
+    f->upload_rgba.swap(f->output_rgba);
+    f->upload_width=f->output_width;f->upload_height=f->output_height;
+    f->upload_generation=f->output_generation;
+    return true;
+}
+
 void render(void *data, gs_effect_t *)
 {
     auto *f = static_cast<AnimeGanFilter *>(data);
@@ -426,26 +468,15 @@ void render(void *data, gs_effect_t *)
         obs_source_skip_video_filter(f->context);
         return;
     }
-    if (f->reset_output_texture.exchange(false) && f->output_texture) {
+    // The generation tag invalidates old GPU output on a settings change.
+    if (f->output_texture && f->texture_generation!=f->model_generation.load()) {
         gs_texture_destroy(f->output_texture);
-        f->output_texture = nullptr;
+        f->output_texture=nullptr;
     }
-    const auto [pw, ph] = capture_dimensions(width, height, f->detail_size.load());
-    bool capture_due = false;
-    uint64_t capture_generation = 0;
-    {
-        std::lock_guard lock(f->input_mutex);
-        if (f->model_ready && !f->load_requested) {
-            if (f->capture_in_flight) {
-                ++f->skipped;
-            } else {
-                f->capture_in_flight = true;
-                capture_generation = f->model_generation;
-                capture_due = true;
-            }
-        }
-    }
-    if (capture_due) {
+    uint32_t detail=DEFAULT_DETAIL_SIZE;
+    uint64_t capture_generation=0;
+    if (try_capture(f,capture_generation,&detail)) {
+        const auto [pw,ph]=capture_dimensions(width,height,detail);
         if (!f->capture)
             f->capture = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
         if (!f->stage || f->stage_width != pw || f->stage_height != ph) {
@@ -484,50 +515,31 @@ void render(void *data, gs_effect_t *)
                             for (uint32_t y = 0; y < ph; ++y)
                                 std::memcpy(frame.data() + static_cast<size_t>(y) * pw * 4,
                                     pixels + static_cast<size_t>(y) * pitch, pw * 4);
-                            std::lock_guard lock(f->input_mutex);
-                            if (capture_generation == f->model_generation &&
-                                f->model_ready && !f->load_requested) {
-                                f->input_rgba.swap(frame);
-                                f->frame_width = pw;
-                                f->frame_height = ph;
-                                f->frame_pending = true;
-                                ++f->captures;
-                                f->frame_cv.notify_one();
-                                capture_due = false;
-                            }
+                            try_submit(f,capture_generation,pw,ph);
                         }
                         gs_stagesurface_unmap(f->stage);
                     }
                 }
             }
         }
-        // No frame was queued (graphics failure or a concurrent model change).
-        // Do not accidentally release a newer generation's capture claim.
-        if (capture_due) {
-            std::lock_guard lock(f->input_mutex);
-            if (capture_generation == f->model_generation)
-                f->capture_in_flight = false;
+    }
+    // Exchange CPU ownership briefly, then upload outside the mutex. If
+    // publication is busy, retain the last completed GPU texture.
+    if (try_take_output(f) && f->upload_generation==f->model_generation.load()) {
+        if (!f->output_texture ||
+            gs_texture_get_width(f->output_texture)!=f->upload_width ||
+            gs_texture_get_height(f->output_texture)!=f->upload_height) {
+            if(f->output_texture)gs_texture_destroy(f->output_texture);
+            f->output_texture=gs_texture_create(f->upload_width,f->upload_height,
+                                                GS_RGBA,1,nullptr,GS_DYNAMIC);
+        }
+        if(f->output_texture){
+            gs_texture_set_image(f->output_texture,f->upload_rgba.data(),f->upload_width*4,false);
+            f->texture_generation=f->upload_generation;
         }
     }
-
-    {
-        std::lock_guard lock(f->output_mutex);
-        if (f->new_output) {
-            if (!f->output_texture ||
-                gs_texture_get_width(f->output_texture) != f->output_width ||
-                gs_texture_get_height(f->output_texture) != f->output_height) {
-                if (f->output_texture)
-                    gs_texture_destroy(f->output_texture);
-                f->output_texture = gs_texture_create(
-                    f->output_width, f->output_height, GS_RGBA, 1, nullptr, GS_DYNAMIC);
-            }
-            if (f->output_texture)
-                gs_texture_set_image(f->output_texture, f->output_rgba.data(),
-                    f->output_width * 4, false);
-            f->new_output = false;
-        }
-    }
-    if (!f->model_ready || !f->output_texture) {
+    if (!f->model_ready || !f->output_texture ||
+        f->texture_generation!=f->model_generation.load()) {
         obs_source_skip_video_filter(f->context);
         return;
     }

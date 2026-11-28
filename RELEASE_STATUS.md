@@ -245,3 +245,26 @@ old repository's commit graph, assets, local configuration or SDKs.
   in this pass. Legacy individual tracking types and standalone Touch
   Field remain distinct from the consolidated tracking/hypershader
   workflows; compatibility and newer dev-side changes still need review.
+
+### Final development handoff (2026-11-27)
+
+Imported the last completed development change (non-waiting Portrait
+Sketch handoffs) as source only. The sketch filter and enhancement
+processor match the final development versions byte-for-byte. The
+contention regression failed before the change, then passed; actual
+320x180 OBS / 256-detail AnimeGAN rendering reached six completed
+frames with eight capacity growth requests at warm-up and eight at
+completion. Isolated Linux C++ model-free suite: 55/55 passed; the
+handoff regression is now required by CI.
+
+Use this clean-history repository's main as the primary development
+checkout. The historical checkout is preserved independently, not
+merged or rewritten. Do not reintroduce obsolete standalone tracking
+filters or Touch Field; keep unified tracking and hypershader.
+Retain public portable runtime/path discovery and packaging rather
+than overwriting with older Linux-only development code. The older
+unverified comprehensive build's latent-engine/style-transfer
+implementation still differs; it was not part of the final verified
+Portrait Sketch changes. Native platform and optional GPU package
+qualification are separate from this verified Linux handoff. No
+installation or push in this pass.

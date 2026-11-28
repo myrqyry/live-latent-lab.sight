@@ -2359,7 +2359,7 @@ int main(int argc, char **argv)
         const bool warm=advance(3);
         const auto initial_growths=growths,initial_completed=completed;
         const bool continued=warm&&advance(initial_completed+3);
-        const bool stable=continued&&growths==initial_growths&&growths>0&&growths<=7;
+        const bool stable=continued&&growths==initial_growths&&growths>0&&growths<=8;
         std::cout<<"SKETCH_BUFFER_REUSE warm="<<warm<<" continued="<<continued
                  <<" growths="<<initial_growths<<" final="<<growths<<" completed="<<completed
                  <<" pass="<<stable<<"\n";
