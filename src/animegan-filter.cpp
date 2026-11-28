@@ -385,7 +385,7 @@ obs_properties_t *properties(void *data)
 
 const char *name(void *)
 {
-    return "LLL.sight Portrait Sketch (ControlNet Prep)";
+    return "lll.sight Portrait Sketch (ControlNet Prep)";
 }
 
 void render(void *data, gs_effect_t *)

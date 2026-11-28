@@ -1,4 +1,4 @@
-# Live Latent Lab: Sight
+# lll.sight
 
 Native OBS Studio tools for computer vision, visual effects and signal-driven
 interactions.
@@ -17,7 +17,7 @@ the specific verification evidence.
 
 ## Linux x86_64 candidate
 
-All entries use the `LLL.sight` prefix in OBS.
+All entries use the `lll.sight` prefix in OBS.
 
 | Filter or source | Function |
 | --- | --- |
@@ -32,7 +32,7 @@ All entries use the `LLL.sight` prefix in OBS.
 | Value Router (Signals + Waves) | Drive OBS properties from signals and waves |
 | VRM Avatar (Native) | Native avatar source |
 
-Choose a mode and model in **LLL.sight Tracking**. Each instance runs
+Choose a mode and model in **lll.sight Tracking**. Each instance runs
 one selected model pipeline; add another instance for simultaneous
 tracking. The six former standalone trackers are no longer registered.
 
@@ -79,7 +79,7 @@ remain user-provisioned, not bundled.
 
 ## Plugin preferences
 
-With Qt6 Widgets available, open **Settings → Plugins → LLL.sight**
+With Qt6 Widgets available, open **Settings → Plugins → lll.sight**
 to choose model and runtime browsing folders and access model download,
 setup and licensing resources. Sound and Sight share one Plugins category
 when both are installed, but maintain independent preferences. Apply or OK

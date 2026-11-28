@@ -420,7 +420,7 @@ obs_properties_t*properties(void*){
     obs_property_text_set_info_type(t,OBS_TEXT_INFO_NORMAL);
     return p;
 }
-const char* name(void*){return "LLL.sight Neural Rendering (Experimental)";}
+const char* name(void*){return "lll.sight Neural Rendering (Experimental)";}
 bool capture_source(gs_texrender_t *&capture,obs_source_t *target,uint32_t cw,uint32_t ch,uint32_t w,uint32_t h){
     if(!capture)capture=gs_texrender_create(GS_RGBA,GS_ZS_NONE);
     if(!capture)return false;

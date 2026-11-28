@@ -78,7 +78,7 @@ static void on_frontend_finished_loading(enum obs_frontend_event event, void *da
             styleDock->setFloating(false);
             styleDock->show();
             
-            blog(LOG_INFO, "[Live Latent Lab: Sight] AI Style dock panel created");
+            blog(LOG_INFO, "[lll.sight] AI Style dock panel created");
         }
     } else if (event == OBS_FRONTEND_EVENT_THEME_CHANGED && styleDock) {
         styleDock->refreshTheme();
@@ -94,7 +94,7 @@ bool obs_module_load(void)
 #ifdef SIGHT_ANIMEGAN_ONLY
     // Build identity must appear in OBS logs before testing an effect.
     // Unambiguous marker to distinguish this corrected filter in OBS logs.
-    blog(LOG_INFO, "[Live Latent Lab: Sight] ACTIVE_SKETCH_CUTOUT_DEPTH_TASKS_SIGNALS_HAND_TOUCH_EVENTS_20261010");
+    blog(LOG_INFO, "[lll.sight] ACTIVE_SKETCH_CUTOUT_DEPTH_TASKS_SIGNALS_HAND_TOUCH_EVENTS_20261010");
     obs_register_source(&neural_enhance_filter_info);
     obs_register_source(&sight_u2net_filter_info);
     obs_register_source(&sight_depth_filter_info);
@@ -138,7 +138,7 @@ bool obs_module_load(void)
     // Experimental models require the legacy checkpoint directories.
     char *config_path = obs_module_get_config_path(obs_current_module(), "");
     if (!config_path) {
-        blog(LOG_ERROR, "[Live Latent Lab: Sight] Failed to get config path, cannot create model directories");
+        blog(LOG_ERROR, "[lll.sight] Failed to get config path, cannot create model directories");
         return false;
     }
     std::string base_path = config_path;
@@ -152,7 +152,7 @@ bool obs_module_load(void)
     MKDIR((models_path + "/vae").c_str());
     MKDIR((models_path + "/taesd").c_str());
     
-    blog(LOG_INFO, "[Live Latent Lab: Sight] Ensure model directories exist at: %s", models_path.c_str());
+    blog(LOG_INFO, "[lll.sight] Ensure model directories exist at: %s", models_path.c_str());
 #endif
 
 #ifdef ENABLE_DOCK_PANEL
@@ -160,14 +160,14 @@ bool obs_module_load(void)
     
     // Debug: Check Qt Core Instance
     if (QCoreApplication::instance()) {
-        blog(LOG_INFO, "[Live Latent Lab: Sight] QCoreApplication exists at address: %p", QCoreApplication::instance());
+        blog(LOG_INFO, "[lll.sight] QCoreApplication exists at address: %p", QCoreApplication::instance());
     } else {
-        blog(LOG_WARNING, "[Live Latent Lab: Sight] CRITICAL: QCoreApplication::instance() is NULL during load! Plugin might link against wrong Qt version.");
+        blog(LOG_WARNING, "[lll.sight] CRITICAL: QCoreApplication::instance() is NULL during load! Plugin might link against wrong Qt version.");
     }
     
-    blog(LOG_INFO, "[Live Latent Lab: Sight] Plugin loaded with dock panel support");
+    blog(LOG_INFO, "[lll.sight] Plugin loaded with dock panel support");
 #else
-    blog(LOG_INFO, "[Live Latent Lab: Sight] Plugin loaded (dock panel disabled)");
+    blog(LOG_INFO, "[lll.sight] Plugin loaded (dock panel disabled)");
 #endif
     
     return true;
@@ -191,12 +191,12 @@ void obs_module_unload(void)
         styleDock = nullptr;
     }
 #endif
-    blog(LOG_INFO, "[Live Latent Lab: Sight] Plugin unloaded");
+    blog(LOG_INFO, "[lll.sight] Plugin unloaded");
 }
 
 const char *obs_module_name(void)
 {
-    return "Live Latent Lab: Sight";
+    return "lll.sight";
 }
 
 const char *obs_module_description(void)

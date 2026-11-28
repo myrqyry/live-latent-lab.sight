@@ -205,3 +205,14 @@ verification passed (19 files). No NVIDIA binaries or models bundled. The
 current host requires explicit CUDA runtime library directories. No claim of
 portable GPU binary release or Windows/macOS GPU qualification. Public CI
 binary uploads remain disabled.
+
+## Lowercase plugin branding (2026-11-27)
+
+Visible plugin/module, source/filter, settings tab and OCR dialog
+branding and current documentation use lll.sight. Existing source
+IDs, plugin filename, configuration/model paths, setting keys and
+runtime contracts are unchanged. Actual main-branch Linux validated
+module registry: nine Sight types and module name passed lowercase
+check (standalone tests/verify-display-names.cpp). Optional build
+labels updated in source; not all optional binaries rebuilt here.
+No installation or push in this pass.

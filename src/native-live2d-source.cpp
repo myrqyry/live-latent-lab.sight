@@ -153,7 +153,7 @@ void destroy(void* data){
     {std::lock_guard lock(s->mutex);s->stop=true;}s->cv.notify_one();if(s->worker.joinable())s->worker.join();
     obs_enter_graphics();s->gpu.reset();obs_leave_graphics();delete s;
 }
-const char* name(void*){return "LLL.sight Live2D Avatar (Native)";}
+const char* name(void*){return "lll.sight Live2D Avatar (Native)";}
 uint32_t width(void* d){return static_cast<Source*>(d)->width;}
 uint32_t height(void* d){return static_cast<Source*>(d)->height;}
 obs_properties_t* properties(void* data){

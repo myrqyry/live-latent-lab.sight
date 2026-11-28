@@ -309,7 +309,7 @@ void render(void* data,gs_effect_t*) {
         obs_source_process_filter_end(f->context,f->effect,w,h);
     }
 }
-const char* name(void*){return "LLL.sight Spatial Motion (DIS)";}
+const char* name(void*){return "lll.sight Spatial Motion (DIS)";}
 }
 struct obs_source_info sight_spatial_motion_filter_info={
     .id="sight_spatial_motion_filter",.type=OBS_SOURCE_TYPE_FILTER,

@@ -13,7 +13,7 @@ Each snapshot contains:
 - model kind, producer input dimensions, monotonic revision and timestamp;
 - explicit empty subject landmarks if inference succeeds without a detection.
 
-The `LLL.sight Tracking Signal Receiver` is a separate OBS filter. It can
+The `lll.sight Tracking Signal Receiver` is a separate OBS filter. It can
 draw the latest body/face/hand landmarks from a specified channel without
 opening a model or running inference. The producer's visual overlay can
 be disabled independently. GPU compositing still preserves native-resolution

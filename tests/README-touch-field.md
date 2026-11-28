@@ -1,6 +1,6 @@
 # Hand Ripples moved to HyperShaderFX
 
-Use LLL.sight Tracking in Hands & gestures mode to publish a hand channel
+Use lll.sight Tracking in Hands & gestures mode to publish a hand channel
 without an overlay. On the same source, add HyperShaderFX and choose
 Sight: Hand Ripples; enable shared Sight snapshots and choose the hand
 channel. The original fingertip refraction and eight decaying wavefronts

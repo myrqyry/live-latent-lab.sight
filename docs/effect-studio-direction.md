@@ -2,7 +2,7 @@
 
 2026-11-18. User confirmed the goal is to bring the useful ideas from
 Effect House into the existing ecosystem, specifically our AI/ML OBS
-plugins Live Latent Lab: Sight and Sound and the established HyperShaderFX
+plugins lll.sight and Sound and the established HyperShaderFX
 visual effect tools. This is an independent implementation inspired by
 publicly described concepts; no ByteDance runtime, proprietary package
 format, assets or copied implementation are required.
