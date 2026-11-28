@@ -34,6 +34,7 @@ namespace lll {
         const char* configured_provider() const {return provider_;}
         const std::string& last_error() const {return last_error_;}
         bool is_ready() const { return ready_; }
+        size_t input_buffer_growths() const { return input_growths_; }
         EnhanceModelType get_type() const { return type_; }
 
         /**
@@ -47,6 +48,8 @@ namespace lll {
         const char* provider_=nullptr;
         std::string last_error_;
         bool ready_ = false;
+        size_t input_growths_ = 0;
+        std::vector<float> input_data_;
         EnhanceModelType type_ = EnhanceModelType::ZeroDCE;
         
 #ifdef USE_ONNX_MEDIAPIPE

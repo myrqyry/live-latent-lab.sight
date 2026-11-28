@@ -70,12 +70,14 @@ struct AnimeGanFilter {
     // One capture per worker inference. Protected by input_mutex.
     bool capture_in_flight = false;
     std::atomic<int64_t> captures{0}, completed{0}, skipped{0};
+    std::atomic<int64_t> buffer_growths{0}, tensor_growths{0};
     std::string requested_path;
     std::string active_path;
     sight_backend::Status backend_status;
     uint64_t model_generation = 0;
     uint32_t frame_width = 0, frame_height = 0;
     std::vector<uint8_t> input_rgba;
+    std::vector<uint8_t> capture_scratch; // graphics-thread owned
     std::atomic<bool> model_ready{false};
     std::atomic<uint32_t> detail_size{DEFAULT_DETAIL_SIZE};
 
@@ -93,11 +95,18 @@ struct AnimeGanFilter {
     uint32_t stage_width = 0, stage_height = 0;
 };
 
+// Keep capacity across frames, counting actual capacity-growth requests.
+void resize_pixels(AnimeGanFilter *f, std::vector<uint8_t> &pixels, size_t size)
+{
+    if (pixels.capacity() < size) ++f->buffer_growths;
+    pixels.resize(size);
+}
+
 void worker_main(AnimeGanFilter *f)
 {
     lll::EnhancementProcessor processor;
+    std::vector<uint8_t> frame, rgb, result, rgba;
     for (;;) {
-        std::vector<uint8_t> frame;
         std::string model_path;
         uint32_t w = 0, h = 0;
         uint64_t generation = 0;
@@ -119,7 +128,7 @@ void worker_main(AnimeGanFilter *f)
                 generation = f->model_generation;
                 w = f->frame_width;
                 h = f->frame_height;
-                frame = std::move(f->input_rgba);
+                frame.swap(f->input_rgba);
                 f->frame_pending = false;
             }
         }
@@ -146,8 +155,10 @@ void worker_main(AnimeGanFilter *f)
         if (!f->model_ready || !w || !h ||
             frame.size() != static_cast<size_t>(w) * h * 4) {
             std::lock_guard lock(f->input_mutex);
-            if (generation == f->model_generation)
+            if (generation == f->model_generation) {
+                frame.swap(f->input_rgba);
                 f->capture_in_flight = false;
+            }
             continue;
         }
 
@@ -155,7 +166,7 @@ void worker_main(AnimeGanFilter *f)
         const uint32_t infer_h = aligned_size(h);
         // Replicate edge pixels into the padded region. Unlike resizing the
         // source to aligned dimensions, this preserves the original aspect.
-        std::vector<uint8_t> rgb(static_cast<size_t>(infer_w) * infer_h * 3);
+        resize_pixels(f, rgb, static_cast<size_t>(infer_w) * infer_h * 3);
         for (uint32_t y = 0; y < infer_h; ++y) {
             const uint32_t src_y = std::min(y, h - 1);
             for (uint32_t x = 0; x < infer_w; ++x) {
@@ -165,9 +176,10 @@ void worker_main(AnimeGanFilter *f)
                 std::memcpy(&rgb[dst], &frame[src], 3);
             }
         }
-        std::vector<uint8_t> result(rgb.size());
+        resize_pixels(f, result, rgb.size());
         const auto inference_start=sight_backend::InferenceHealth::Clock::now();
         const bool succeeded=processor.process(rgb.data(),infer_w,infer_h,result.data(),infer_w,infer_h);
+        f->tensor_growths = static_cast<int64_t>(processor.input_buffer_growths());
         const double inference_ms=std::chrono::duration<double,std::milli>(
             sight_backend::InferenceHealth::Clock::now()-inference_start).count();
         if (!succeeded) {
@@ -176,12 +188,13 @@ void worker_main(AnimeGanFilter *f)
             std::lock_guard lock(f->input_mutex);
             if (generation == f->model_generation) {
                 f->backend_status.health.record(false,inference_ms,sight_backend::InferenceHealth::Clock::now());
+                frame.swap(f->input_rgba);
                 f->capture_in_flight = false;
             }
             continue;
         }
         // Crop padding from the inference result before scaling in OBS.
-        std::vector<uint8_t> rgba(static_cast<size_t>(w) * h * 4);
+        resize_pixels(f, rgba, static_cast<size_t>(w) * h * 4);
         for (uint32_t y = 0; y < h; ++y) {
             for (uint32_t x = 0; x < w; ++x) {
                 const size_t src = (static_cast<size_t>(y) * infer_w + x) * 3;
@@ -196,7 +209,8 @@ void worker_main(AnimeGanFilter *f)
             if (generation != f->model_generation || !f->model_ready)
                 continue;
             std::lock_guard out_lock(f->output_mutex);
-            f->output_rgba = std::move(rgba);
+            f->output_rgba.swap(rgba);
+            frame.swap(f->input_rgba);
             f->output_width = w;
             f->output_height = h;
             f->new_output = true;
@@ -204,7 +218,7 @@ void worker_main(AnimeGanFilter *f)
             ++f->completed;
             f->capture_in_flight = false;
             if (!f->announced_first_frame) {
-                blog(LOG_INFO, "[Sight/AnimeGAN] First real frame processed: %ux%u (inference %ux%u)",
+                blog(LOG_INFO, "[Sight/AnimeGAN] SIGHT_SKETCH_REUSE_20261127 First real frame processed: %ux%u (inference %ux%u)",
                      w, h, infer_w, infer_h);
                 f->announced_first_frame = true;
             }
@@ -220,6 +234,13 @@ void capture_stats_proc(void *data, calldata_t *args)
     calldata_set_int(args, "skipped", f->skipped.load());
 }
 
+void buffer_stats_proc(void *data, calldata_t *args)
+{
+    auto *f = static_cast<AnimeGanFilter *>(data);
+    calldata_set_int(args, "completed", f->completed.load());
+    calldata_set_int(args, "growths", f->buffer_growths.load() + f->tensor_growths.load());
+}
+
 void *create(obs_data_t *settings, obs_source_t *context)
 {
     auto *f = new AnimeGanFilter;
@@ -227,6 +248,9 @@ void *create(obs_data_t *settings, obs_source_t *context)
     proc_handler_add(obs_source_get_proc_handler(context),
         "void sight_sketch_capture_stats_v1(out int captures, out int completed, out int skipped)",
         capture_stats_proc, f);
+    proc_handler_add(obs_source_get_proc_handler(context),
+        "void sight_sketch_buffer_stats_v1(out int completed, out int growths)",
+        buffer_stats_proc, f);
     f->detail_size = validated_detail_size(obs_data_get_int(settings, DETAIL_SIZE));
     const char *path = obs_data_get_string(settings, MODEL_PATH);
     if (path && *path) {
@@ -455,14 +479,15 @@ void render(void *data, gs_effect_t *)
                     uint32_t pitch = 0;
                     if (gs_stagesurface_map(f->stage, &pixels, &pitch)) {
                         if (pitch >= pw * 4) {
-                            std::vector<uint8_t> frame(static_cast<size_t>(pw) * ph * 4);
+                            auto &frame = f->capture_scratch;
+                            resize_pixels(f, frame, static_cast<size_t>(pw) * ph * 4);
                             for (uint32_t y = 0; y < ph; ++y)
                                 std::memcpy(frame.data() + static_cast<size_t>(y) * pw * 4,
                                     pixels + static_cast<size_t>(y) * pitch, pw * 4);
                             std::lock_guard lock(f->input_mutex);
                             if (capture_generation == f->model_generation &&
                                 f->model_ready && !f->load_requested) {
-                                f->input_rgba = std::move(frame);
+                                f->input_rgba.swap(frame);
                                 f->frame_width = pw;
                                 f->frame_height = ph;
                                 f->frame_pending = true;

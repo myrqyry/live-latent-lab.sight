@@ -958,6 +958,15 @@ if(SIGHT_ANIMEGAN_MODEL)
                 TIMEOUT 40
                 ENVIRONMENT "SIGHT_SMOKE_WIDTH=512;SIGHT_SMOKE_HEIGHT=512;SIGHT_SMOKE_CAPTURE_GATE=1")
 
+            add_test(NAME sight_animegan_obs_buffer_reuse
+                COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_obs_sight_render.sh"
+                    "$<TARGET_FILE:sight_obs_effect_render_smoke>"
+                    "$<TARGET_FILE:live-latent-lab-sight>"
+                    "${SIGHT_ANIMEGAN_MODEL}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/data")
+            set_tests_properties(sight_animegan_obs_buffer_reuse PROPERTIES
+                TIMEOUT 50 ENVIRONMENT "SIGHT_SMOKE_WIDTH=320;SIGHT_SMOKE_HEIGHT=180;SIGHT_SMOKE_SKETCH_SIZE=256;SIGHT_SMOKE_SKETCH_REUSE=1")
+
             # Explicit local weights and portrait fixture: no downloads in CTest.
             set(SIGHT_CUTOUT_PORTRAIT "" CACHE FILEPATH "512x512 portrait fixture for cutout model qualification")
             set(SIGHT_U2NETP_MODEL "" CACHE FILEPATH "Local U2NetP ONNX")

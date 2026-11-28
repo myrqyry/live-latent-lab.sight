@@ -2335,6 +2335,39 @@ int main(int argc, char **argv)
             return 1;
         }
     }
+    if (std::getenv("SIGHT_SMOKE_SKETCH_REUSE")) {
+        auto stats=[&](int64_t& completed,int64_t& growths){
+            calldata_t d{};
+            bool ok=proc_handler_call(obs_source_get_proc_handler(filter),
+                                      "sight_sketch_buffer_stats_v1",&d);
+            completed=calldata_int(&d,"completed");
+            growths=calldata_int(&d,"growths");
+            calldata_free(&d);
+            return ok;
+        };
+        int64_t completed=0,growths=0;
+        auto advance=[&](int64_t target){
+            const auto end=std::chrono::steady_clock::now()+std::chrono::seconds(15);
+            while(std::chrono::steady_clock::now()<end){
+                if(!stats(completed,growths))return false;
+                if(completed>=target)return true;
+                if(!render_image(source,current))return false;
+                std::this_thread::sleep_for(std::chrono::milliseconds(30));
+            }
+            return false;
+        };
+        const bool warm=advance(3);
+        const auto initial_growths=growths,initial_completed=completed;
+        const bool continued=warm&&advance(initial_completed+3);
+        const bool stable=continued&&growths==initial_growths&&growths>0&&growths<=7;
+        std::cout<<"SKETCH_BUFFER_REUSE warm="<<warm<<" continued="<<continued
+                 <<" growths="<<initial_growths<<" final="<<growths<<" completed="<<completed
+                 <<" pass="<<stable<<"\n";
+        if(!stable){
+            obs_source_filter_remove(source,filter);
+            obs_source_release(filter);obs_source_release(source);obs_shutdown();return 1;
+        }
+    }
     if(signal_receiver&&std::getenv("SIGHT_SMOKE_CONSUMER_DISCOVERY")){
         auto contains=[](obs_property_t* p,const char* key){
             if(!p||obs_property_get_type(p)!=OBS_PROPERTY_LIST||

@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstring>
 #include <algorithm>
+#include <array>
 #include <stdexcept>
 #include <thread>
 
@@ -176,7 +177,9 @@ void EnhancementProcessor::process_generic(const uint8_t* in, int w, int h, uint
     // This AnimeGANv3 ONNX export is NHWC. Zero-DCE retains its old NCHW path.
     const bool anime = type_ == EnhanceModelType::AnimeGANv3;
     const size_t pixels = static_cast<size_t>(w) * h;
-    std::vector<float> input_data(pixels * 3);
+    if (input_data_.capacity() < pixels * 3) ++input_growths_;
+    input_data_.resize(pixels * 3);
+    auto &input_data = input_data_;
 
     for (size_t i = 0; i < pixels; ++i) {
         for (size_t channel = 0; channel < 3; ++channel) {
@@ -186,9 +189,9 @@ void EnhancementProcessor::process_generic(const uint8_t* in, int w, int h, uint
         }
     }
 
-    const std::vector<int64_t> shape = anime
-        ? std::vector<int64_t>{1, h, w, 3}
-        : std::vector<int64_t>{1, 3, h, w};
+    const std::array<int64_t,4> shape = anime
+        ? std::array<int64_t,4>{1, h, w, 3}
+        : std::array<int64_t,4>{1, 3, h, w};
     Ort::Value input_tensor = Ort::Value::CreateTensor<float>(
         memory_info_, input_data.data(), input_data.size(),
         shape.data(), shape.size());
