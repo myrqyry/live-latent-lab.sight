@@ -216,3 +216,32 @@ module registry: nine Sight types and module name passed lowercase
 check (standalone tests/verify-display-names.cpp). Optional build
 labels updated in source; not all optional binaries rebuilt here.
 No installation or push in this pass.
+
+## Clean-history source convergence (2026-11-27)
+
+The maintained source repository is intended to carry the useful
+development implementation, not an intentionally reduced edition.
+Transfer selected tracked source and tests without importing the
+old repository's commit graph, assets, local configuration or SDKs.
+
+- Spatial Motion now recycles CPU staging frames and grayscale buffers.
+  Padded-stride ownership/reuse, dense motion, stabilizer and actual
+  isolated libobs motion-render tests passed. The render test reported
+  392 flow samples, endpoint error 0.0212124, and stabilization MAE
+  24.0785 -> 9.91514 on its synthetic fixture.
+- Native Preprocessors now registers with OpenCV on Linux, including
+  conventional image transforms and Depth Anything V2, TEED, PiDiNet,
+  HED and scribble modes. Uses existing public ONNX session implementation.
+  Default C++ and opt-in offline Rust paths both passed real model and
+  libobs render tests using separately acquired local checkpoints.
+  Expected HED/PiDiNet/TEED reference hashes matched in both builds.
+  Missing-model tests verify passthrough without fabricated results.
+- Default isolated model-free suite 54/54; optional Rust build has an
+  additional ABI test. Native interface mutation tests, offline Cargo
+  tests, and technical staged install checks passed; no weights staged.
+  New required cases enforced by existing Linux CI report validator.
+- No Windows/macOS preprocessor build qualification, production camera
+  benchmark, redistribution approval, remote CI, installation or push
+  in this pass. Legacy individual tracking types and standalone Touch
+  Field remain distinct from the consolidated tracking/hypershader
+  workflows; compatibility and newer dev-side changes still need review.

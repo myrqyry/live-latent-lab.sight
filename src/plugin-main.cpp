@@ -36,6 +36,9 @@ extern struct obs_source_info neural_enhance_filter_info; // Portrait Sketch
 extern struct obs_source_info sight_u2net_filter_info; // U2Net subject cutout
 extern struct obs_source_info sight_depth_filter_info; // Depth Anything depth camera
 extern struct obs_source_info sight_unified_tracking_filter_info;
+#ifdef SIGHT_HAVE_PREPROCESSORS
+extern struct obs_source_info sight_preprocessors_filter_info;
+#endif
 extern struct obs_source_info sight_privacy_v2_filter_info;
 #ifdef SIGHT_HAVE_OCR
 extern struct obs_source_info sight_text_obfuscation_filter_info;
@@ -99,6 +102,9 @@ bool obs_module_load(void)
     obs_register_source(&sight_u2net_filter_info);
     obs_register_source(&sight_depth_filter_info);
     obs_register_source(&sight_unified_tracking_filter_info);
+#ifdef SIGHT_HAVE_PREPROCESSORS
+    obs_register_source(&sight_preprocessors_filter_info);
+#endif
     blog(LOG_INFO,"[Sight] SIGHT_UNIFIED_TRACKING_20261118_U653");
     obs_register_source(&sight_privacy_v2_filter_info);
 #ifdef SIGHT_HAVE_OCR

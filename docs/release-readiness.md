@@ -23,7 +23,7 @@ separate from the experimental all-effects build.
   Models and native runtime remain separately acquired. Production
   webcam performance and full GUI acceptance remain unverified.
 - **Default included effects:** Portrait Sketch, Subject Cutout, Depth
-  Camera, Tracking (face/body/hand/holistic/object and optional RTMW), Privacy V2, Tracking Signal
+  Camera, optional native Preprocessors (OpenCV and local ONNX), Tracking (face/body/hand/holistic/object and optional RTMW), Privacy V2, Tracking Signal
   Receiver, Value Router, and Native VRM Avatar. The source registrations
   in src/plugin-main.cpp are authoritative.
 - **Optional native diffusion:** the generator and live filter are

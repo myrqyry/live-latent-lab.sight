@@ -23,6 +23,7 @@ All entries use the `lll.sight` prefix in OBS.
 | --- | --- |
 | Tracking | Face, body, hands and gestures, holistic, objects, and optional GPU WholeBody (RTMW) |
 | Portrait Sketch (ControlNet Prep) | Model-based portrait line art |
+| Preprocessors | Native image transforms, Depth Anything V2, TEED, PiDiNet, HED and scribble |
 | Subject Cutout (U2Net, MODNet, Longpipe) | Foreground separation, optional motion-compensated Longpipe stabilization and shared matte |
 | Depth Camera (Depth Anything) | Relative inverse depth and shared depth map |
 | Spatial Motion (DIS) | Optional optical flow and motion signals |
@@ -45,7 +46,7 @@ hypershader on the same source, disable its overlay, enable shared Sight
 snapshots in hypershader, select the hand channel and choose
 **Sight: Hand Ripples**. The former standalone Touch Field filter is removed.
 
-The expanded Linux build registers the ten entries above. Spatial Motion
+The expanded Linux build registers the eleven entries above. Preprocessors, Spatial Motion
 and Text Obfuscation require optional system libraries; WholeBody needs
 LiteRT GPU support. Native Live2D remains an [optional local development build](docs/live2d-native.md) using a separately acquired official SDK; it is excluded from the default preview binary, not removed from the source. Unvalidated generative effects remain gated.
 
@@ -61,6 +62,23 @@ Model-backed effects require separately acquired compatible models and
 runtime libraries. See [optional CUDA](docs/onnx-cuda.md), [model setup](docs/model-downloads.md) and
 [MediaPipe ABI notes](docs/mediapipe-1.2.3.md). Privacy V2 is experimental;
 it is not a guarantee of anonymity or complete redaction.
+
+## Native Preprocessors
+
+On Linux, with OpenCV available, add **lll.sight Preprocessors**. The
+single filter includes native Canny, binary, lineart, PyraCanny, scribble,
+luminance, intensity, palette and tile shuffle modes, plus local Depth
+Anything V2, TEED, PiDiNet and HED ONNX inference. Model-backed modes
+require compatible local ONNX files; unavailable modes do not fabricate
+outputs. No ComfyUI or Python service is required at runtime.
+
+The optional dependency-free Rust normalization/postprocessing core is
+enabled with `-DSIGHT_ENABLE_RUST_PREPROCESSOR_CORE=ON` and built with
+Cargo offline. The default C++ path remains functional. Disable the
+filter with `-DSIGHT_ENABLE_PREPROCESSORS=OFF`. See the
+[native interface contract](docs/native-preprocessor-interface.md) for
+per-instance counters, ABI and deterministic checks. Windows/macOS
+native baseline does not yet include this OpenCV-dependent filter.
 
 ## Optional native diffusion (experimental)
 

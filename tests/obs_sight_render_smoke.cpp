@@ -345,6 +345,12 @@ int main(int argc, char **argv)
     bool found_router = false;
     bool found_privacy = false;
     bool found_ocr = false, found_flow = false, found_unified = false;
+    bool found_preprocessors=false;
+#ifdef SIGHT_SMOKE_EXPECT_PREPROCESSORS
+    constexpr bool expect_preprocessors=true;
+#else
+    constexpr bool expect_preprocessors=false;
+#endif
     const char *selected_filter = std::getenv("SIGHT_SMOKE_EFFECT");
     if (!selected_filter || !*selected_filter)
         selected_filter = "neural_enhance_filter";
@@ -371,6 +377,8 @@ int main(int argc, char **argv)
             found_router = true;
         else if (std::strcmp(name,"sight_text_obfuscation_filter")==0)
             found_ocr=true;
+        else if(std::strcmp(name,"sight_preprocessors_filter")==0)
+            found_preprocessors=true;
         else if(std::strcmp(name,"sight_spatial_motion_filter")==0)
             found_flow=true;
         else if(std::strcmp(name,"sight_native_sd_live_filter")==0)
@@ -431,7 +439,7 @@ int main(int argc, char **argv)
             obs_shutdown();return 1;
         }
     }
-    if (count != 8+size_t(found_ocr)+size_t(found_flow)+size_t(expect_native_sd_live)+size_t(expect_neural_rendering) || found_neural_rendering!=expect_neural_rendering || found_native_sd_live!=expect_native_sd_live || !verified_only || !found_unified ||
+    if (count != 8+size_t(expect_preprocessors)+size_t(found_ocr)+size_t(found_flow)+size_t(expect_native_sd_live)+size_t(expect_neural_rendering) || found_preprocessors!=expect_preprocessors || found_neural_rendering!=expect_neural_rendering || found_native_sd_live!=expect_native_sd_live || !verified_only || !found_unified ||
         !found_privacy || !found_sketch || !found_u2net || !found_depth ||
         !found_receiver || !found_router) {
         std::cerr << "FAIL: expected exactly the verified Sight filter set\n";

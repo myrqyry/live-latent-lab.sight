@@ -1593,3 +1593,5 @@ if(SIGHT_ENABLE_RTMW AND SIGHT_RTMW_MODEL AND SIGHT_YOLOX_MODEL AND
         set_tests_properties(sight_unified_tracking_real_obs PROPERTIES TIMEOUT 150 RUN_SERIAL TRUE)
     endif()
 endif()
+
+include(cmake/preprocessors.cmake)

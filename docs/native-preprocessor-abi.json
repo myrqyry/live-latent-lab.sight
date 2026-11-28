@@ -1,0 +1,189 @@
+{
+  "schema_version": 1,
+  "description": "Sight unified Preprocessors native OBS procedure and Rust/C ABI; ABI parameter order and types are normative.",
+  "rust_ffi": {
+    "sight_normalize_rgb_to_chw_f32_v1": {
+      "return": "i32",
+      "parameters": [
+        [
+          "rgb",
+          "*const u8"
+        ],
+        [
+          "rgb_len",
+          "usize"
+        ],
+        [
+          "width",
+          "u32"
+        ],
+        [
+          "height",
+          "u32"
+        ],
+        [
+          "mean3",
+          "*const f32"
+        ],
+        [
+          "std3",
+          "*const f32"
+        ],
+        [
+          "output",
+          "*mut f32"
+        ],
+        [
+          "output_len",
+          "usize"
+        ]
+      ],
+      "rust_name_overrides": {
+        "mean3": "mean",
+        "std3": "std"
+      }
+    },
+    "sight_rgb8_to_chw_f32_v2": {
+      "return": "i32",
+      "parameters": [
+        [
+          "rgb",
+          "*const u8"
+        ],
+        [
+          "rgb_len",
+          "usize"
+        ],
+        [
+          "width",
+          "u32"
+        ],
+        [
+          "height",
+          "u32"
+        ],
+        [
+          "scale",
+          "f32"
+        ],
+        [
+          "mean3",
+          "*const f32"
+        ],
+        [
+          "std3",
+          "*const f32"
+        ],
+        [
+          "output",
+          "*mut f32"
+        ],
+        [
+          "output_len",
+          "usize"
+        ]
+      ],
+      "rust_name_overrides": {
+        "mean3": "mean",
+        "std3": "std"
+      }
+    },
+    "sight_teed_edges_to_gray_v1": {
+      "return": "i32",
+      "parameters": [
+        [
+          "edge0",
+          "*const f32"
+        ],
+        [
+          "edge1",
+          "*const f32"
+        ],
+        [
+          "edge2",
+          "*const f32"
+        ],
+        [
+          "edge3",
+          "*const f32"
+        ],
+        [
+          "pixels",
+          "usize"
+        ],
+        [
+          "safe_steps",
+          "u32"
+        ],
+        [
+          "output",
+          "*mut u8"
+        ],
+        [
+          "output_len",
+          "usize"
+        ]
+      ],
+      "rust_name_overrides": {
+        "output": "out",
+        "output_len": "out_len"
+      }
+    },
+    "sight_pidinet_probs_to_gray_v1": {
+      "return": "i32",
+      "parameters": [
+        [
+          "probabilities",
+          "*const f32"
+        ],
+        [
+          "pixels",
+          "usize"
+        ],
+        [
+          "safe",
+          "i32"
+        ],
+        [
+          "output",
+          "*mut u8"
+        ],
+        [
+          "output_len",
+          "usize"
+        ]
+      ],
+      "rust_name_overrides": {}
+    }
+  },
+  "obs_procedures": {
+    "sight_preprocessor_stats_v1": {
+      "callback": "stats_proc",
+      "outputs": [
+        "captures",
+        "completed",
+        "skipped",
+        "failed",
+        "depth_completed"
+      ]
+    },
+    "sight_preprocessor_teed_stats_v1": {
+      "callback": "teed_stats_proc",
+      "outputs": [
+        "teed_completed"
+      ]
+    },
+    "sight_preprocessor_pidinet_stats_v1": {
+      "callback": "pidinet_stats_proc",
+      "outputs": [
+        "pidinet_completed"
+      ]
+    },
+    "sight_preprocessor_hed_stats_v1": {
+      "callback": "hed_stats_proc",
+      "outputs": [
+        "hed_completed"
+      ]
+    }
+  }
+}
