@@ -4,15 +4,14 @@ Native OBS Studio tools for computer vision, visual effects and signal-driven
 interactions.
 
 **Source:** [live-latent-lab.sight](https://github.com/myrqyry/live-latent-lab.sight)
-(currently private). This is a curated, separately rooted release-candidate
+This public source preview is a curated, separately rooted release-candidate
 repository, not the historical development repository. There are currently
 **no GitHub releases or redistribution-cleared installers**.
 
 **Start here:** Review [models and downloads](docs/model-downloads.md), then
 [build and verify](#build-and-verify) locally on Linux with OBS 32. Optional
 GPU tracking needs the extra LiteRT runtime and models listed below.
-[Release readiness](docs/release-readiness.md) records what still blocks
-public source/binary distribution; [release status](RELEASE_STATUS.md) records
+[Release readiness](docs/release-readiness.md) records remaining binary, runtime and model redistribution gates; [release status](RELEASE_STATUS.md) records
 the specific verification evidence.
 
 ## Linux x86_64 candidate
@@ -54,7 +53,7 @@ Portrait Sketch reuses capture, inference and upload workspaces. Its
 render-side capture, submission and result exchange use non-waiting
 mutex attempts; busy handoffs skip a capture or retain the previous
 valid texture. Generation tags reject obsolete results. GPU readback
-and texture upload remain synchronous graphics operations.
+and texture upload remain synchronous graphics operations. The current CUDA path also reuses device tensors for cutout mattes, Depth Anything and supported edge preprocessors (HED, TEED and PiDiNet); this is backend/model-specific and is not a claim that all rendering or inference is zero-copy.
 
 Subject Cutout supports U²-Net/U²-NetP, MODNet and Longpipe, per-instance
 Auto/CPU/required CUDA selection, adaptive optional flow and bounded shared
@@ -115,8 +114,9 @@ official frontend API; other versions are unqualified.
 
 ## Build and verify
 
-Windows x64 and macOS (Apple Silicon/Intel) native baseline builds are under
-qualification through the shared CI matrix. They use the same maintained
+At checkpoint `a5912fc`, both Linux OBS32 and OBS33 shared jobs passed in the [verified Actions run](https://github.com/myrqyry/live-latent-lab.sight/actions/runs/46131377692). The six Windows and macOS jobs failed. The public workflow deliberately does not upload binary artifacts; build from source using the matching SDK.
+
+Windows x64 and macOS (Apple Silicon/Intel) native baseline builds remain under qualification through the shared CI matrix. They use the same maintained
 CPU/ONNX and VRM sources with matching native SDKs, not Linux runtime binaries.
 Optional Linux-only backends and private Qt integration are not enabled in
 that baseline. See [shared qualification](.github/scripts/SHARED-CI.md).
@@ -166,8 +166,8 @@ See [release status](RELEASE_STATUS.md) for qualification evidence and limitatio
 
 ## Release gate
 
-Public distribution is not yet cleared. Sight’s original code is licensed
+The source preview is public; redistribution of complete binary/runtime/model packages is not yet cleared. Sight’s original code is licensed
 under [GPL-3.0-only](LICENSE). See [licensing and third-party boundaries](LICENSING.md).
 Runtime provenance, model terms, clean-machine acceptance and package
-compatibility must still be reviewed before publication. Windows and macOS
+compatibility must still be reviewed before binary distribution. Windows and macOS
 are not certified.
