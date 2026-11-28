@@ -48,6 +48,10 @@ if [[ "$ort_found" != 1 ]]; then
   echo "RELEASE_STAGE_MISSING_ONNX_NEEDED=YES" >&2
   exit 1
 fi
+if grep -Fxq 'SIGHT_ENABLE_CUDA_TEXTURE_INTEROP:BOOL=ON' "$build/CMakeCache.txt"; then
+  require_file "data/sketch-cuda.ptx"
+  require_file "bin/64bit/libonnxruntime_providers_cuda.so"
+fi
 require_file "data/sight-tracking-overlay.effect"
 require_file "data/sight-depth-camera.effect"
 require_file "data/locale/en-US.ini"

@@ -21,6 +21,9 @@
 #include <vector>
 
 #include "core/enhancement_processor.hpp"
+#ifdef SIGHT_WITH_CUDA_TEXTURE
+#include "core/sketch-cuda-texture.hpp"
+#endif
 
 // This is the one enabled Sight effect. The other processors stay in the tree
 // but neither compile nor register until they have their own verified path.
@@ -80,6 +83,19 @@ struct AnimeGanFilter {
     std::vector<uint8_t> capture_scratch; // graphics-thread owned
     std::atomic<bool> model_ready{false};
     std::atomic<uint32_t> detail_size{DEFAULT_DETAIL_SIZE};
+    // GPU path is explicitly selected; no silent staged/CPU fallback.
+    std::atomic<bool> cuda_texture{false};
+#ifdef SIGHT_WITH_CUDA_TEXTURE
+    // Only the worker owns and destroys the session. Render accesses it
+    // under input_mutex, and only while the single-frame gate allows it.
+    sight_cuda::SketchSession* gpu_active=nullptr;
+    bool gpu_prepare_requested=false,gpu_result_ready=false;
+    uint32_t gpu_prepare_w=0,gpu_prepare_h=0;
+    std::atomic<int64_t> gpu_captures{0},gpu_completed{0},gpu_uploads{0},gpu_registrations{0},gpu_loads{0};
+    std::atomic<int64_t> gpu_failures{0},staging_readbacks{0},gpu_max_handoff_us{0};
+    std::atomic<uint64_t> gpu_failure_generation{0};
+    sight_cuda::Graphics gpu_graphics;
+#endif
 
     std::mutex output_mutex;
     std::vector<uint8_t> output_rgba;
@@ -107,54 +123,137 @@ void resize_pixels(AnimeGanFilter *f, std::vector<uint8_t> &pixels, size_t size)
 
 void worker_main(AnimeGanFilter *f)
 {
-    lll::EnhancementProcessor processor;
+    auto processor=std::make_unique<lll::EnhancementProcessor>();
+#ifdef SIGHT_WITH_CUDA_TEXTURE
+    std::unique_ptr<sight_cuda::SketchSession> gpu;
+#endif
     std::vector<uint8_t> frame, rgb, result, rgba;
     for (;;) {
         std::string model_path;
         uint32_t w = 0, h = 0;
         uint64_t generation = 0;
         bool do_load = false;
+        bool gpu_mode=false;
+#ifdef SIGHT_WITH_CUDA_TEXTURE
+        bool do_prepare=false;
+#endif
         {
             std::unique_lock lock(f->input_mutex);
             f->frame_cv.wait(lock, [&] {
-                return f->stopping || f->load_requested || f->frame_pending;
+                return f->stopping || f->load_requested || f->frame_pending
+#ifdef SIGHT_WITH_CUDA_TEXTURE
+                    || f->gpu_prepare_requested
+#endif
+                    ;
             });
             if (f->stopping)
                 return;
+            gpu_mode=f->cuda_texture.load();
             if (f->load_requested) {
                 do_load = true;
+#ifdef SIGHT_WITH_CUDA_TEXTURE
+                f->gpu_active=nullptr;f->gpu_prepare_requested=false;f->gpu_result_ready=false;
+#endif
                 model_path = f->requested_path;
                 generation = f->model_generation;
                 f->load_requested = false;
                 f->frame_pending = false;
+#ifdef SIGHT_WITH_CUDA_TEXTURE
+            } else if(f->gpu_prepare_requested){
+                do_prepare=true;generation=f->model_generation.load();
+                w=f->gpu_prepare_w;h=f->gpu_prepare_h;f->gpu_prepare_requested=false;
+#endif
             } else {
                 generation = f->model_generation;
                 w = f->frame_width;
                 h = f->frame_height;
-                frame.swap(f->input_rgba);
+                if(!gpu_mode)frame.swap(f->input_rgba);
                 f->frame_pending = false;
             }
         }
 
         if (do_load) {
-            const bool loaded = !model_path.empty() &&
-                processor.load(model_path.c_str(), lll::EnhanceModelType::AnimeGANv3, true);
+            bool loaded=false;std::string failure;const char* provider=nullptr;
+#ifdef SIGHT_WITH_CUDA_TEXTURE
+            gpu.reset();
+            if(gpu_mode){
+                processor.reset();
+                if(!model_path.empty()){
+                    try{
+                        char* path=obs_module_file("sketch-cuda.ptx");
+                        std::string kernels=path?path:"";if(path)bfree(path);
+                        gpu=std::make_unique<sight_cuda::SketchSession>();
+                        gpu->load(model_path,kernels);++f->gpu_loads;loaded=true;
+                        provider="ONNX CUDA with resident image tensors";
+                    }catch(const std::exception&e){failure=e.what();gpu.reset();}
+                }
+            }else
+#endif
+            if(gpu_mode){
+                failure="CUDA texture support is not included in this build";
+            }else{
+                if(!processor)processor=std::make_unique<lll::EnhancementProcessor>();
+                loaded=!model_path.empty()&&processor->load(model_path.c_str(),lll::EnhanceModelType::AnimeGANv3,true);
+                provider=processor->configured_provider();failure=processor->last_error();
+            }
             {
                 std::lock_guard lock(f->input_mutex);
                 if (generation != f->model_generation)
                     continue;
                 f->capture_in_flight = false;
                 f->active_path = loaded ? model_path : std::string();
-                f->backend_status.complete(model_path,loaded,processor.configured_provider(),processor.last_error());
+                f->backend_status.complete(model_path,loaded,provider,failure);
+#ifdef SIGHT_WITH_CUDA_TEXTURE
+                f->gpu_active=loaded&&gpu_mode?gpu.get():nullptr;
+#endif
                 f->model_ready = loaded;
             }
             if (loaded)
                 blog(LOG_INFO, "[Sight/AnimeGAN] Loaded real ONNX model: %s", model_path.c_str());
             else if (!model_path.empty())
-                blog(LOG_ERROR, "[Sight/AnimeGAN] Failed to load model: %s", model_path.c_str());
+                blog(LOG_ERROR, "[Sight/AnimeGAN] Failed to load model: %s (%s)", model_path.c_str(),failure.c_str());
             continue;
         }
 
+#ifdef SIGHT_WITH_CUDA_TEXTURE
+        if(gpu_mode){
+            const auto begin=sight_backend::InferenceHealth::Clock::now();
+            bool success=false;std::string failure;
+            try{
+                if(!gpu)throw std::runtime_error("CUDA model unavailable");
+                if(do_prepare)gpu->prepare(w,h);
+                else gpu->run();
+                success=true;
+            }catch(const std::exception& e){failure=e.what();}
+            std::lock_guard lock(f->input_mutex);
+            if(generation!=f->model_generation||!f->model_ready){
+                // A detail-only change retains the session. The old worker
+                // still owns the slot until it returns; release it now,
+                // without publishing stale pixels.
+                if(f->gpu_active==gpu.get()&&!f->load_requested&&f->model_ready)
+                    f->capture_in_flight=false;
+                continue;
+            }
+            if(!success){
+                ++f->gpu_failures;f->model_ready=false;f->gpu_active=nullptr;
+                f->capture_in_flight=false;f->gpu_result_ready=false;
+                f->backend_status.complete(f->active_path,false,nullptr,failure);
+                blog(LOG_ERROR,"[Sight/CUDA texture] %s",failure.c_str());
+            }else if(do_prepare){
+                f->capture_in_flight=false;
+            }else{
+                ++f->completed;++f->gpu_completed;f->gpu_result_ready=true;
+                f->backend_status.health.record(true,std::chrono::duration<double,std::milli>(
+                    sight_backend::InferenceHealth::Clock::now()-begin).count(),sight_backend::InferenceHealth::Clock::now());
+                if(!f->announced_first_frame){
+                    blog(LOG_INFO,"[Sight/CUDA texture] First real GPU frame: %ux%u",w,h);
+                    f->announced_first_frame=true;
+                }
+                // Keep the slot owned until graphics has copied the result.
+            }
+            continue;
+        }
+#endif
         if (!f->model_ready || !w || !h ||
             frame.size() != static_cast<size_t>(w) * h * 4) {
             std::lock_guard lock(f->input_mutex);
@@ -181,8 +280,8 @@ void worker_main(AnimeGanFilter *f)
         }
         resize_pixels(f, result, rgb.size());
         const auto inference_start=sight_backend::InferenceHealth::Clock::now();
-        const bool succeeded=processor.process(rgb.data(),infer_w,infer_h,result.data(),infer_w,infer_h);
-        f->tensor_growths = static_cast<int64_t>(processor.input_buffer_growths());
+        const bool succeeded=processor->process(rgb.data(),infer_w,infer_h,result.data(),infer_w,infer_h);
+        f->tensor_growths = static_cast<int64_t>(processor->input_buffer_growths());
         const double inference_ms=std::chrono::duration<double,std::milli>(
             sight_backend::InferenceHealth::Clock::now()-inference_start).count();
         if (!succeeded) {
@@ -245,6 +344,19 @@ void buffer_stats_proc(void *data, calldata_t *args)
     calldata_set_int(args, "growths", f->buffer_growths.load() + f->tensor_growths.load());
 }
 
+#ifdef SIGHT_WITH_CUDA_TEXTURE
+void gpu_stats_proc(void* data,calldata_t* args){
+    auto* f=static_cast<AnimeGanFilter*>(data);
+    calldata_set_int(args,"captures",f->gpu_captures.load());
+    calldata_set_int(args,"completed",f->gpu_completed.load());
+    calldata_set_int(args,"uploads",f->gpu_uploads.load());
+    calldata_set_int(args,"registrations",f->gpu_registrations.load());
+    calldata_set_int(args,"loads",f->gpu_loads.load());
+    calldata_set_int(args,"failures",f->gpu_failures.load());
+    calldata_set_int(args,"readbacks",f->staging_readbacks.load());
+    calldata_set_int(args,"max_handoff_us",f->gpu_max_handoff_us.load());
+}
+#endif
 void *create(obs_data_t *settings, obs_source_t *context)
 {
     auto *f = new AnimeGanFilter;
@@ -255,6 +367,11 @@ void *create(obs_data_t *settings, obs_source_t *context)
     proc_handler_add(obs_source_get_proc_handler(context),
         "void sight_sketch_buffer_stats_v1(out int completed, out int growths)",
         buffer_stats_proc, f);
+    f->cuda_texture=obs_data_get_bool(settings,"cuda_texture");
+#ifdef SIGHT_WITH_CUDA_TEXTURE
+    proc_handler_add(obs_source_get_proc_handler(context),
+        "void sight_sketch_gpu_stats_v1(out int captures, out int completed, out int uploads, out int registrations, out int failures, out int readbacks, out int max_handoff_us, out int loads)",gpu_stats_proc,f);
+#endif
     f->detail_size = validated_detail_size(obs_data_get_int(settings, DETAIL_SIZE));
     const char *path = obs_data_get_string(settings, MODEL_PATH);
     if (path && *path) {
@@ -283,6 +400,9 @@ void destroy(void *data)
         f->worker.join();
 
     obs_enter_graphics();
+#ifdef SIGHT_WITH_CUDA_TEXTURE
+    try{f->gpu_graphics.reset();}catch(const std::exception&e){blog(LOG_ERROR,"[Sight/CUDA texture] %s",e.what());}
+#endif
     if (f->output_texture)
         gs_texture_destroy(f->output_texture);
     if (f->stage)
@@ -302,10 +422,23 @@ void update(void *data, obs_data_t *settings)
     {
         std::lock_guard lock(f->input_mutex);
         const bool path_changed = selected != f->requested_path;
-        if (!path_changed && detail == f->detail_size)
+        const bool cuda=obs_data_get_bool(settings,"cuda_texture");
+        const bool mode_changed=cuda!=f->cuda_texture;
+        if (!path_changed && detail == f->detail_size && !mode_changed)
             return;
+        f->cuda_texture=cuda;
         f->detail_size = detail;
-        if (path_changed || (!f->model_ready && !selected.empty())) {
+        bool retain_gpu=false,retain_busy=false;
+#ifdef SIGHT_WITH_CUDA_TEXTURE
+        retain_gpu=cuda&&!path_changed&&!mode_changed&&f->model_ready&&f->gpu_active&&!f->load_requested;
+        // If a GPU worker already dequeued work, its buffers remain owned
+        // until it returns. Queued work and completed results can be dropped.
+        retain_busy=retain_gpu&&f->capture_in_flight&&!f->frame_pending&&
+            !f->gpu_prepare_requested&&!f->gpu_result_ready;
+        if(!retain_gpu)f->gpu_active=nullptr;
+        f->gpu_prepare_requested=false;f->gpu_result_ready=false;
+#endif
+        if (path_changed || mode_changed || (cuda&&!retain_gpu) || (!f->model_ready && !selected.empty())) {
             // If detail changes while model loading is underway, the old
             // generation will be discarded. Request a new load, rather than
             // leaving the filter with no ready model forever.
@@ -315,7 +448,7 @@ void update(void *data, obs_data_t *settings)
             f->model_ready = false;
         }
         f->frame_pending = false;
-        f->capture_in_flight = false;
+        f->capture_in_flight = retain_busy;
         f->backend_status.health={};
         ++f->model_generation;
         f->announced_first_frame = false;
@@ -330,6 +463,7 @@ void defaults(obs_data_t *settings)
 {
     obs_data_set_default_string(settings, MODEL_PATH, "");
     obs_data_set_default_int(settings, DETAIL_SIZE, DEFAULT_DETAIL_SIZE);
+    obs_data_set_default_bool(settings,"cuda_texture",false);
 }
 
 // OBS uses the final obs_properties_add_path argument as the Browse dialog's
@@ -381,6 +515,13 @@ std::string model_browser_directory(AnimeGanFilter *filter)
 obs_properties_t *properties(void *data)
 {
     obs_properties_t *p = obs_properties_create();
+#ifdef SIGHT_WITH_CUDA_TEXTURE
+    auto* texture=obs_properties_add_bool(p,"cuda_texture","GPU-resident CUDA textures");
+    obs_property_set_long_description(texture,"Requires NVIDIA OpenGL on CUDA device 0 and a matched CUDA ONNX runtime. Keeps image tensors in GPU memory, uses the inference worker and never silently falls back.");
+#else
+    if(data&&static_cast<AnimeGanFilter*>(data)->cuda_texture)
+        obs_properties_add_bool(p,"cuda_texture","GPU-resident CUDA textures (unavailable in this build; uncheck to use the staged path)");
+#endif
     const auto folder = model_browser_directory(static_cast<AnimeGanFilter *>(data));
     obs_property_t *path = obs_properties_add_path(
         p, MODEL_PATH, "Portrait Sketch ONNX model",
@@ -454,6 +595,101 @@ bool try_take_output(AnimeGanFilter *f)
     return true;
 }
 
+#ifdef SIGHT_WITH_CUDA_TEXTURE
+void render_gpu(AnimeGanFilter* f,obs_source_t* target,uint32_t width,uint32_t height){
+    auto& g=f->gpu_graphics;
+    const uint64_t generation=f->model_generation.load();
+    const auto [pw,ph]=capture_dimensions(width,height,f->detail_size.load());
+    bool notify=false,want_capture=false;
+    auto handoff_time=[&](auto start){
+        int64_t us=std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now()-start).count();
+        int64_t previous=f->gpu_max_handoff_us.load();
+        while(us>previous&&!f->gpu_max_handoff_us.compare_exchange_weak(previous,us)){}
+    };
+    try{
+        if(g.w!=pw||g.h!=ph){
+            g.reset();g.w=pw;g.h=ph;
+        }
+        if(g.generation!=generation){
+            g.consume_fence();g.valid_output=false;g.generation=generation;
+        }
+        if(f->gpu_failure_generation.load()==generation||!f->model_ready){
+            g.valid_output=false;obs_source_skip_video_filter(f->context);return;
+        }
+        {
+            std::unique_lock lock(f->input_mutex,std::try_to_lock);
+            if(lock&&generation==f->model_generation&&f->cuda_texture&&f->model_ready&&f->gpu_active){
+                auto& session=*f->gpu_active;
+                if(f->gpu_result_ready){
+                    if(session.width()==pw&&session.height()==ph){
+                        const auto start=std::chrono::steady_clock::now();
+                        g.init();
+                        if(!g.output)g.output=gs_texture_create(pw,ph,GS_RGBA,1,nullptr,GS_DYNAMIC);
+                        if(g.register_texture(g.output,g.output_resource,g.output_id,CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD))++f->gpu_registrations;
+                        session.upload(g.output_resource);
+                        g.valid_output=true;++f->gpu_uploads;handoff_time(start);
+                    }
+                    f->gpu_result_ready=false;f->capture_in_flight=false;
+                }
+                if(!f->capture_in_flight&&!f->load_requested){
+                    if(session.width()!=pw||session.height()!=ph){
+                        f->gpu_prepare_w=pw;f->gpu_prepare_h=ph;
+                        f->gpu_prepare_requested=true;f->capture_in_flight=true;notify=true;
+                    }else if(g.fence){
+                        // Never wait for the capture's GL fence. Return the last
+                        // texture if the GPU hasn't finished rendering yet.
+                        if(g.fence_ready()){
+                            const auto start=std::chrono::steady_clock::now();
+                            g.init();
+                            if(g.register_texture(gs_texrender_get_texture(g.capture),g.capture_resource,g.capture_id,
+                                                  CU_GRAPHICS_REGISTER_FLAGS_READ_ONLY))++f->gpu_registrations;
+                            session.capture(g.capture_resource);g.consume_fence();
+                            f->frame_width=pw;f->frame_height=ph;
+                            f->frame_pending=f->capture_in_flight=true;
+                            ++f->gpu_captures;++f->captures;notify=true;handoff_time(start);
+                        }
+                    }else want_capture=true;
+                }else ++f->skipped;
+            }
+        }
+        if(notify)f->frame_cv.notify_one();
+        if(want_capture&&generation==f->model_generation.load()){
+            g.init();
+            if(!g.capture)g.capture=gs_texrender_create(GS_RGBA,GS_ZS_NONE);
+            if(!g.capture)throw std::runtime_error("CUDA capture texture allocation failed");
+            gs_texrender_reset(g.capture);
+            if(gs_texrender_begin(g.capture,pw,ph)){
+                gs_projection_push();gs_matrix_push();gs_matrix_identity();
+                gs_ortho(0,float(width),0,float(height),-100,100);
+                auto* effect=obs_get_base_effect(OBS_EFFECT_DEFAULT);
+                if(effect)while(gs_effect_loop(effect,"Draw"))obs_source_video_render(target);
+                gs_matrix_pop();gs_projection_pop();gs_texrender_end(g.capture);
+                g.fence=glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE,0);
+                if(!g.fence)throw std::runtime_error("CUDA capture fence creation failed");
+                glFlush();
+            }
+        }
+    }catch(const std::exception& e){
+        g.valid_output=false;++f->gpu_failures;
+        f->gpu_failure_generation=generation;
+        std::unique_lock lock(f->input_mutex,std::try_to_lock);
+        if(lock&&generation==f->model_generation){
+            f->model_ready=false;f->gpu_active=nullptr;
+            f->backend_status.complete(f->active_path,false,nullptr,e.what());
+        }
+        blog(LOG_ERROR,"[Sight/CUDA texture] %s",e.what());
+    }
+    if(!g.valid_output||!g.output||!f->model_ready||generation!=f->model_generation){
+        obs_source_skip_video_filter(f->context);return;
+    }
+    auto* effect=obs_get_base_effect(OBS_EFFECT_DEFAULT);
+    auto* image=effect?gs_effect_get_param_by_name(effect,"image"):nullptr;
+    if(!image){obs_source_skip_video_filter(f->context);return;}
+    gs_effect_set_texture(image,g.output);
+    while(gs_effect_loop(effect,"Draw"))gs_draw_sprite(g.output,0,width,height);
+}
+#endif
 void render(void *data, gs_effect_t *)
 {
     auto *f = static_cast<AnimeGanFilter *>(data);
@@ -468,6 +704,19 @@ void render(void *data, gs_effect_t *)
         obs_source_skip_video_filter(f->context);
         return;
     }
+    if(f->cuda_texture){
+#ifdef SIGHT_WITH_CUDA_TEXTURE
+        render_gpu(f,target,width,height);
+#else
+        obs_source_skip_video_filter(f->context);
+#endif
+        return;
+    }
+#ifdef SIGHT_WITH_CUDA_TEXTURE
+    if(f->gpu_graphics.capture||f->gpu_graphics.output){
+        try{f->gpu_graphics.reset();}catch(const std::exception&e){blog(LOG_ERROR,"[Sight/CUDA texture] %s",e.what());}
+    }
+#endif
     // The generation tag invalidates old GPU output on a settings change.
     if (f->output_texture && f->texture_generation!=f->model_generation.load()) {
         gs_texture_destroy(f->output_texture);
@@ -509,6 +758,9 @@ void render(void *data, gs_effect_t *)
                     uint8_t *pixels = nullptr;
                     uint32_t pitch = 0;
                     if (gs_stagesurface_map(f->stage, &pixels, &pitch)) {
+#ifdef SIGHT_WITH_CUDA_TEXTURE
+                        ++f->staging_readbacks;
+#endif
                         if (pitch >= pw * 4) {
                             auto &frame = f->capture_scratch;
                             resize_pixels(f, frame, static_cast<size_t>(pw) * ph * 4);

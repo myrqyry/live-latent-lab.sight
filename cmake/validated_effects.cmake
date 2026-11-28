@@ -1613,3 +1613,25 @@ if(SIGHT_ENABLE_RTMW AND SIGHT_RTMW_MODEL AND SIGHT_YOLOX_MODEL AND
 endif()
 
 include(cmake/preprocessors.cmake)
+
+# Optional NVIDIA/OpenGL texture path; baseline platforms have no CUDA
+# build/runtime dependency. PTX is built locally, not committed.
+option(SIGHT_ENABLE_CUDA_TEXTURE_INTEROP "Enable native CUDA/OpenGL Portrait Sketch texture path" OFF)
+if(SIGHT_ENABLE_CUDA_TEXTURE_INTEROP)
+    if(NOT EXISTS "${SIGHT_ORT_LIB_DIR}/libonnxruntime_providers_cuda.so")
+        message(FATAL_ERROR "CUDA texture interop requires a matching ONNX Runtime GPU SDK")
+    endif()
+    find_package(CUDAToolkit REQUIRED)
+    find_package(OpenGL REQUIRED)
+    set(SIGHT_CUDA_TEXTURE_ARCH "75" CACHE STRING "Minimum CUDA virtual architecture for texture kernels")
+    set(_sketch_ptx "${CMAKE_CURRENT_BINARY_DIR}/sketch-cuda.ptx")
+    add_custom_command(OUTPUT "${_sketch_ptx}"
+        COMMAND "${CUDAToolkit_NVCC_EXECUTABLE}" --ptx "-arch=compute_${SIGHT_CUDA_TEXTURE_ARCH}" -O3
+                "${CMAKE_CURRENT_SOURCE_DIR}/src/core/sketch-cuda-kernels.cu" -o "${_sketch_ptx}"
+        DEPENDS src/core/sketch-cuda-kernels.cu VERBATIM)
+    add_custom_target(sight_sketch_cuda_ptx DEPENDS "${_sketch_ptx}")
+    add_dependencies(live-latent-lab-sight sight_sketch_cuda_ptx)
+    target_compile_definitions(live-latent-lab-sight PRIVATE SIGHT_WITH_CUDA_TEXTURE)
+    target_link_libraries(live-latent-lab-sight PRIVATE CUDA::cuda_driver OpenGL::GL)
+    install(FILES "${_sketch_ptx}" DESTINATION data)
+endif()

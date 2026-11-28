@@ -486,6 +486,9 @@ int main(int argc, char **argv)
     }
     std::cout << "default_model_folder=" << starting_folder << "\n";
     if (std::strcmp(selected_filter, "neural_enhance_filter") == 0) {
+        if(std::getenv("SIGHT_SMOKE_CUDA_TEXTURE") && !obs_properties_get(unconfigured,"cuda_texture")){
+            std::cerr<<"FAIL: missing CUDA texture option\n";obs_properties_destroy(unconfigured);obs_shutdown();return 1;
+        }
         const char *requested = std::getenv("SIGHT_SMOKE_SKETCH_SIZE");
         if (requested && std::strtoul(requested, nullptr, 10) == 1024) {
             obs_property_t *detail = obs_properties_get(unconfigured, "detail_size");
@@ -623,6 +626,7 @@ int main(int argc, char **argv)
                 std::getenv("SIGHT_SMOKE_SIGNAL_CHANNEL") : "face");
     if (const char *detail = std::getenv("SIGHT_SMOKE_SKETCH_SIZE"))
         obs_data_set_int(settings, "detail_size", std::atoi(detail));
+    if(std::getenv("SIGHT_SMOKE_CUDA_TEXTURE"))obs_data_set_bool(settings,"cuda_texture",true);
     if (const char *edge = std::getenv("SIGHT_SMOKE_DEPTH_EDGE"))
         obs_data_set_int(settings, "inference_edge", std::atoi(edge));
     if (const char *cadence = std::getenv("SIGHT_SMOKE_DEPTH_CADENCE"))
@@ -2333,6 +2337,74 @@ int main(int argc, char **argv)
             obs_source_release(source);
             obs_shutdown();
             return 1;
+        }
+    }
+    if(std::getenv("SIGHT_SMOKE_CUDA_TEXTURE")){
+        int64_t captures=0,completed=0,uploads=0,registrations=0,failures=0,readbacks=0,max_handoff=0,loads=0;
+        auto stats=[&]{
+            calldata_t d{};bool ok=proc_handler_call(obs_source_get_proc_handler(filter),"sight_sketch_gpu_stats_v1",&d);
+            captures=calldata_int(&d,"captures");completed=calldata_int(&d,"completed");uploads=calldata_int(&d,"uploads");
+            registrations=calldata_int(&d,"registrations");failures=calldata_int(&d,"failures");readbacks=calldata_int(&d,"readbacks");
+            max_handoff=calldata_int(&d,"max_handoff_us");loads=calldata_int(&d,"loads");calldata_free(&d);return ok;
+        };
+        auto advance=[&](int64_t n){
+            auto end=std::chrono::steady_clock::now()+std::chrono::seconds(20);
+            while(std::chrono::steady_clock::now()<end){
+                if(!stats()||failures)return false;
+                if(uploads>=n)return true;
+                if(!render_image(source,current))return false;
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
+            return false;
+        };
+        bool warm=advance(3);auto regs=registrations;
+        bool stable=warm&&advance(6)&&regs==registrations&&registrations==2&&readbacks==0&&captures<=completed+1;
+        std::cout<<"SIGHT_SKETCH_CUDA_RESIDENT warm="<<warm<<" uploads="<<uploads<<" registrations="<<registrations
+            <<" readbacks="<<readbacks<<" failures="<<failures<<" max_handoff_us="<<max_handoff<<" pass="<<stable<<"\n";
+        if(!stable){obs_source_filter_remove(source,filter);obs_source_release(filter);obs_source_release(source);obs_shutdown();return 1;}
+        auto* change=obs_source_get_settings(filter);obs_data_set_int(change,"detail_size",512);obs_source_update(filter,change);obs_data_release(change);
+        auto target=uploads+3;
+        bool resized=advance(target)&&readbacks==0&&registrations==4&&loads==1;
+        std::cout<<"SIGHT_SKETCH_CUDA_RESIZE uploads="<<uploads<<" registrations="<<registrations<<" loads="<<loads<<" pass="<<resized<<"\n";
+        if(!resized){obs_source_filter_remove(source,filter);obs_source_release(filter);obs_source_release(source);obs_shutdown();return 1;}
+        if(std::getenv("SIGHT_SMOKE_CUDA_TEXTURE_SWITCH")){
+            auto all_completed=[&]{
+                calldata_t d{};proc_handler_call(obs_source_get_proc_handler(filter),"sight_sketch_capture_stats_v1",&d);
+                auto n=calldata_int(&d,"completed");calldata_free(&d);return n;
+            };
+            auto toggle=[&](bool enabled){
+                auto* d=obs_source_get_settings(filter);obs_data_set_bool(d,"cuda_texture",enabled);obs_source_update(filter,d);obs_data_release(d);
+            };
+            if(!render_image(source,current))return 1;
+            const auto gpu_frame=current;const auto prior=all_completed();
+            toggle(false);
+            bool staged=false;
+            auto end=std::chrono::steady_clock::now()+std::chrono::seconds(20);
+            while(std::chrono::steady_clock::now()<end){
+                if(!render_image(source,current)||!stats())break;
+                if(all_completed()>=prior+2&&readbacks>0){
+                    staged=render_image(source,current)&&current.size()==gpu_frame.size();break;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
+            double mae=0;unsigned max_error=0;
+            if(staged){
+                for(size_t i=0;i<current.size();++i)if(i%4!=3){
+                    auto e=unsigned(std::abs(int(current[i])-int(gpu_frame[i])));
+                    mae+=e;max_error=std::max(max_error,e);
+                }
+                mae/=current.size()*0.75;
+            }
+            toggle(true);
+            const auto next=uploads+3;
+            // One staged result may have been in flight while switching; no
+            // new staged reads are permitted after GPU publication resumes.
+            bool returned=advance(next);const auto staged_reads=readbacks;
+            returned=returned&&advance(next+2)&&readbacks==staged_reads&&loads==2&&registrations==6;
+            bool ok=staged&&mae<1.0&&max_error<=5&&returned;
+            std::cout<<"SIGHT_SKETCH_CUDA_SWITCH staged="<<staged<<" mae="<<mae<<" max_error="<<max_error
+                <<" returned="<<returned<<" loads="<<loads<<" readbacks="<<readbacks<<" pass="<<ok<<"\n";
+            if(!ok){obs_source_filter_remove(source,filter);obs_source_release(filter);obs_source_release(source);obs_shutdown();return 1;}
         }
     }
     if (std::getenv("SIGHT_SMOKE_SKETCH_REUSE")) {

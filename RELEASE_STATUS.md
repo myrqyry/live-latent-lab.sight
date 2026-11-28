@@ -268,3 +268,27 @@ implementation still differs; it was not part of the final verified
 Portrait Sketch changes. Native platform and optional GPU package
 qualification are separate from this verified Linux handoff. No
 installation or push in this pass.
+
+## CUDA/OpenGL texture interoperability (2026-11-27)
+
+Independently implemented the useful GPU texture-handoff mechanism
+identified in OBS RTX SuperResolution without its Maxine models.
+Optional real Portrait Sketch path uses the existing ONNX model, native
+CUDA driver API, persistent GL registrations, non-waiting capture fence
+polling, worker-owned stream/device buffers and reusable GPU I/O
+binding. Image normalization/padding and output repacking use CUDA
+kernels. No application-side host pixel readback in GPU mode. Explicit
+CUDA request fails closed; standard portable staged path retained.
+
+Actual NVIDIA hardware/staged module passed six GPU uploads with two
+registrations, zero readbacks/failures, maximum handoff 453 us; resize
+produced nine uploads/four registrations while retaining one model
+load. Live staged/GPU switch passed, RGB max error 1/255 and mean
+0.0000115741. Separate full-model feasibility probe median 15.17 ms
+warm, CPU reference max error 1/255; CPU graph nodes were shape-only
+(max 32 byte activations/outputs). Driver mapping may still synchronize.
+Normal CPU suite 55/55 and technical GPU package staging passed.
+Qualification helper and documentation in tools/verify-cuda-texture.sh
+and docs/cuda-texture-interop.md. No Maxine dependency, model change,
+installation or push. Other effects/platforms and contention/device
+loss remain unqualified.
