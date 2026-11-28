@@ -169,15 +169,15 @@ void SegmentationProcessor::preprocess(const uint8_t* src, int w, int h) {
         input_tensor_values_.resize(input_width_ * input_height_ * 3);
     }
 
-    // Resize input to input_width_ x input_height_
-    std::vector<uint8_t> resized(input_width_ * input_height_ * 3);
-    
-    // Bilinear resize RGB
-    // We can use lll::resize_bilinear (but it expects 4 channels usually in our utilisation, or check implementation)
-    // The implementation in image-utils is 4-channel. We need 3-channel resize.
-    // Let's do a simple implementation here or use utility if available.
-    // For now, implementing simple bilinear resize for 3-channel.
-    
+    float mean[3]={0.485f,0.456f,0.406f};
+    float deviation[3]={0.229f,0.224f,0.225f};
+    if(type_==SegModelType::RMBG||type_==SegModelType::MODNet)
+        for(int c=0;c<3;++c){mean[c]=.5f;deviation[c]=.5f;}
+    if(type_==SegModelType::Longpipe)
+        for(int c=0;c<3;++c){mean[c]=0;deviation[c]=1;}
+    const size_t plane=size_t(input_width_)*input_height_;
+    // Keep the prior uint8 interpolation rounding, but write directly to
+    // the persistent NCHW tensor instead of allocating a packed RGB image.
     float x_ratio = (float)(w - 1) / (input_width_ - 1);
     float y_ratio = (float)(h - 1) / (input_height_ - 1);
     
@@ -195,7 +195,7 @@ void SegmentationProcessor::preprocess(const uint8_t* src, int w, int h) {
             int idx_hl = (y_h * w + x_l) * 3;
             int idx_hh = (y_h * w + x_h) * 3;
             
-            int out_idx = (y * input_width_ + x) * 3;
+            size_t out_idx = size_t(y)*input_width_+x;
             
             for (int c = 0; c < 3; c++) {
                  float val = 
@@ -203,37 +203,12 @@ void SegmentationProcessor::preprocess(const uint8_t* src, int w, int h) {
                     src[idx_lh + c] * x_weight * (1 - y_weight) +
                     src[idx_hl + c] * (1 - x_weight) * y_weight +
                     src[idx_hh + c] * x_weight * y_weight;
-                 resized[out_idx + c] = (uint8_t)val;
+                 input_tensor_values_[size_t(c)*plane+out_idx]=(static_cast<uint8_t>(val)/255.0f-mean[c])/deviation[c];
             }
         }
     }
 
-    // Normalize
-    // U2Net: (x - 0.485, 0.456, 0.406) / (0.229, 0.224, 0.225) (ImageNet)
-    // RMBG-1.4: (x - 0.5) / 0.5
-    
-    float mean[3] = {0.485f, 0.456f, 0.406f};
-    float std[3] = {0.229f, 0.224f, 0.225f};
-    
-    if (type_ == SegModelType::RMBG || type_ == SegModelType::MODNet) {
-        mean[0] = 0.5f; mean[1] = 0.5f; mean[2] = 0.5f;
-        std[0] = 0.5f;  std[1] = 0.5f;  std[2] = 0.5f;
-    }
-    if(type_==SegModelType::Longpipe){
-        mean[0]=mean[1]=mean[2]=0.f;
-        std[0]=std[1]=std[2]=1.f;
-    }
-    // InSPyReNet (SwinB) uses ImageNet mean/std (default above)
 
-    for (int i = 0; i < input_width_ * input_height_; i++) {
-        float r = resized[i*3 + 0] / 255.0f;
-        float g = resized[i*3 + 1] / 255.0f;
-        float b = resized[i*3 + 2] / 255.0f;
-
-        input_tensor_values_[i] = (r - mean[0]) / std[0];
-        input_tensor_values_[input_width_ * input_height_ + i] = (g - mean[1]) / std[1];
-        input_tensor_values_[2 * input_width_ * input_height_ + i] = (b - mean[2]) / std[2];
-    }
 }
 
 bool SegmentationProcessor::process(const uint8_t* rgb, int width, int height, uint8_t* alpha_out) {

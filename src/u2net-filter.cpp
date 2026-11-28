@@ -71,11 +71,11 @@ std::pair<uint32_t, uint32_t> capture_dimensions(uint32_t width, uint32_t height
 }
 
 // Keep the public v1 matte bounded independently of render quality.
-std::vector<uint8_t> shared_matte(const std::vector<uint8_t>&mask,
-                                  uint32_t w,uint32_t h,uint32_t sw,uint32_t sh)
+void shared_matte(const std::vector<uint8_t>&mask,
+                  uint32_t w,uint32_t h,uint32_t sw,uint32_t sh,std::vector<uint8_t>&result)
 {
-    if(w==sw&&h==sh)return {};
-    std::vector<uint8_t> result(size_t(sw)*sh);
+    if(w==sw&&h==sh){result.clear();return;}
+    result.resize(size_t(sw)*sh);
     for(uint32_t y=0;y<sh;++y){
         const float fy=sh>1?float(y)*float(h-1)/float(sh-1):float(h-1)*.5f;
         const auto y0=std::min(uint32_t(fy),h-1),y1=std::min(y0+1,h-1);
@@ -89,7 +89,6 @@ std::vector<uint8_t> shared_matte(const std::vector<uint8_t>&mask,
             result[size_t(y)*sw+x]=uint8_t(std::clamp(std::lround(top*(1-dy)+bot*dy),0L,255L));
         }
     }
-    return result;
 }
 
 std::atomic<uint64_t> matte_sequence{0};
@@ -108,16 +107,20 @@ struct U2NetFilter {
     std::atomic<uint32_t> capture_edge{320};
     std::string active_path;
     sight_backend::Status backend_status;
-    uint64_t model_generation = 0;
+    std::atomic<uint64_t> model_generation{0};
     uint32_t frame_width = 0, frame_height = 0;
     uint32_t frame_source_width = 0, frame_source_height = 0;
     std::chrono::steady_clock::time_point frame_time{};
-    std::vector<uint8_t> input_rgba;
+    std::vector<uint8_t> input_rgba, capture_scratch;
+    std::atomic<int64_t> captures{0},completed{0},growths{0},uploads{0},source_draws{0},reused_draws{0};
+    std::vector<uint8_t> upload_scratch;
+    uint64_t output_generation=0,texture_generation=0;
     std::atomic<bool> model_ready{false};
     // OBS property writes can arrive off the graphics thread.
     std::atomic<int> treatment_mode{0};
     std::atomic<float> treatment_strength{0.7f};
     std::atomic<bool> refine_edges{false};
+    std::atomic<bool> reuse_source_draw{false};
     std::atomic<float> matte_gamma{1.f}, matte_low{0.f}, matte_high{1.f}, retention{0.f};
     std::atomic<int> matte_view{0};
     std::atomic<bool> reset_history{false};
@@ -149,6 +152,43 @@ struct U2NetFilter {
     uint32_t stage_width = 0, stage_height = 0;
 };
 
+void resize_pixels(U2NetFilter* f,std::vector<uint8_t>&v,size_t n){
+    if(v.capacity()<n)++f->growths;
+    v.resize(n);
+}
+
+bool try_submit(U2NetFilter* f,uint64_t generation,uint32_t edge,uint32_t w,uint32_t h,
+                uint32_t sw,uint32_t sh,std::chrono::steady_clock::time_point captured){
+    std::unique_lock lock(f->input_mutex,std::try_to_lock);
+    if(!lock||!f->model_ready||f->load_requested||f->stopping||f->frame_pending||
+       generation!=f->model_generation||edge!=f->capture_edge||
+       f->capture_scratch.size()!=size_t(w)*h*4)return false;
+    f->capture_scratch.swap(f->input_rgba);
+    f->frame_width=w;f->frame_height=h;f->frame_source_width=sw;f->frame_source_height=sh;
+    f->frame_time=captured;f->frame_pending=true;++f->captures;
+    lock.unlock();f->frame_cv.notify_one();return true;
+}
+void rearm_capture(U2NetFilter*f,uint64_t generation){
+    // A failed old-generation capture must not override the new model's gate.
+    std::unique_lock lock(f->input_mutex,std::try_to_lock);
+    if(lock&&generation==f->model_generation&&f->model_ready&&!f->frame_pending&&!f->load_requested)
+        f->wants_frame=true;
+    else if(!lock&&generation==f->model_generation&&f->model_ready)
+        f->wants_frame=true;
+}
+bool try_copy_matte(U2NetFilter*f,bool want_raw,uint32_t&w,uint32_t&h,uint64_t&generation){
+    std::unique_lock lock(f->output_mutex,std::try_to_lock);
+    if(!lock||f->output_mask.empty()||f->output_generation!=f->model_generation||
+       (!f->new_output&&f->output_texture&&f->uploaded_raw==want_raw))return false;
+    auto& pixels=want_raw&&!f->raw_mask.empty()?f->raw_mask:f->output_mask;
+    // The published matte remains available to ABI consumers. Copy only
+    // the small R8 mask; no driver operations while holding this lock.
+    resize_pixels(f,f->upload_scratch,pixels.size());
+    std::memcpy(f->upload_scratch.data(),pixels.data(),pixels.size());
+    w=f->output_width;h=f->output_height;generation=f->output_generation;
+    f->new_output=false;return true;
+}
+
 void worker_main(U2NetFilter *f)
 {
     lll::SegmentationProcessor processor;
@@ -160,8 +200,8 @@ void worker_main(U2NetFilter *f)
     uint32_t measured_frames = 0;
     bool announced_history = false;
     Clock::time_point previous_result{};
+    std::vector<uint8_t> frame,rgb,mask,raw,compact;
     for (;;) {
-        std::vector<uint8_t> frame;
         std::string model_path,flow_path;
         auto family=lll::SegModelType::U2Net;
         auto device=Device::Auto;
@@ -192,7 +232,7 @@ void worker_main(U2NetFilter *f)
                 source_w = f->frame_source_width;
                 source_h = f->frame_source_height;
                 captured = f->frame_time;
-                frame = std::move(f->input_rgba);
+                frame.swap(f->input_rgba);
                 f->frame_pending = false;
             }
         }
@@ -231,16 +271,17 @@ void worker_main(U2NetFilter *f)
         if (!f->model_ready || !w || !h ||
             frame.size() != static_cast<size_t>(w) * h * 4) {
             std::lock_guard lock(f->input_mutex);
-            if (f->model_ready && generation == f->model_generation)
-                f->wants_frame = true;
+            if (f->model_ready && generation == f->model_generation){
+                frame.swap(f->input_rgba);f->wants_frame = true;
+            }
             continue;
         }
 
-        std::vector<uint8_t> rgb(static_cast<size_t>(w) * h * 3);
+        resize_pixels(f,rgb,size_t(w)*h*3);
         for (size_t i = 0; i < static_cast<size_t>(w) * h; ++i)
             std::memcpy(&rgb[i * 3], &frame[i * 4], 3);
 
-        std::vector<uint8_t> mask(static_cast<size_t>(w) * h);
+        resize_pixels(f,mask,size_t(w)*h);
         const auto inference_start = Clock::now();
         const bool succeeded = processor.process(rgb.data(), w, h, mask.data());
         double inference_ms = std::chrono::duration<double, std::milli>(
@@ -252,7 +293,7 @@ void worker_main(U2NetFilter *f)
             std::lock_guard lock(f->input_mutex);
             if (f->model_ready && generation == f->model_generation) {
                 f->backend_status.health.record(false,inference_ms,Clock::now());
-                f->wants_frame = true;
+                frame.swap(f->input_rgba);f->wants_frame = true;
             }
             continue;
         }
@@ -260,10 +301,9 @@ void worker_main(U2NetFilter *f)
         if (f->reset_history.exchange(false)){
             history.reset();flow.reset();
         }
-        std::vector<uint8_t> raw;
+        raw.clear();
         const float retention = f->retention.load();
-        if (retention > 0.f)
-            raw = mask;
+        if(retention>0.f){resize_pixels(f,raw,mask.size());std::copy(mask.begin(),mask.end(),raw.begin());}
         const auto now = Clock::now();
         if (now - previous_result > std::chrono::seconds(2)){
             history.reset();flow.reset();
@@ -286,7 +326,8 @@ void worker_main(U2NetFilter *f)
 
         const auto motion_sample = motion.update(rgb,w,h,source_w,source_h,captured);
         const auto [sw,sh]=capture_dimensions(w,h,SIGHT_MATTE_MAX_EDGE);
-        auto compact=shared_matte(mask,w,h,sw,sh);
+        if(w!=sw||h!=sh)resize_pixels(f,compact,size_t(sw)*sh);
+        shared_matte(mask,w,h,sw,sh,compact);
 
         // Inference only returns a small matte. Rendering later applies it to
         // the live original-resolution source entirely on the GPU, so no
@@ -297,10 +338,10 @@ void worker_main(U2NetFilter *f)
             if (generation != f->model_generation || !f->model_ready)
                 continue;
             std::lock_guard out_lock(f->output_mutex);
-            f->output_mask = std::move(mask);
-            f->shared_mask=std::move(compact);
+            f->output_mask.swap(mask);f->shared_mask.swap(compact);
             f->shared_width=sw;f->shared_height=sh;
-            f->raw_mask = std::move(raw);
+            f->raw_mask.swap(raw);frame.swap(f->input_rgba);
+            f->output_generation=generation;++f->completed;
             f->output_width = w;
             f->output_height = h;
             f->output_source_width = source_w;
@@ -346,7 +387,7 @@ void read_matte(void *data, calldata_t *params)
     // Never wait for a producer upload or a model change.
     std::unique_lock lock(f->output_mutex, std::try_to_lock);
     if (!lock || !f->model_ready || !obs_source_enabled(f->context) ||
-        !f->output_sequence || f->output_mask.empty() ||
+        !f->output_sequence || f->output_generation!=f->model_generation || f->output_mask.empty() ||
         std::chrono::steady_clock::now() - f->output_time > std::chrono::milliseconds(max_age))
         return;
     const auto&pixels=f->shared_mask.empty()?f->output_mask:f->shared_mask;
@@ -378,7 +419,7 @@ void read_motion(void *data, calldata_t *params)
     out->sequence=0; out->energy=0.f;
     std::unique_lock lock(f->output_mutex,std::try_to_lock);
     if (!lock || !f->model_ready || !obs_source_enabled(f->context) ||
-        !f->output_sequence || !f->output_motion.valid ||
+        !f->output_sequence || f->output_generation!=f->model_generation || !f->output_motion.valid ||
         std::chrono::steady_clock::now()-f->output_time>std::chrono::milliseconds(max_age))
         return;
     out->source_width=f->output_source_width;
@@ -387,6 +428,13 @@ void read_motion(void *data, calldata_t *params)
     out->energy=f->output_motion.energy;
     out->reserved=0;
     calldata_set_bool(params,"available",true);
+}
+
+void buffer_stats(void* data,calldata_t*d){
+    auto*f=static_cast<U2NetFilter*>(data);
+    calldata_set_int(d,"captures",f->captures.load());calldata_set_int(d,"completed",f->completed.load());
+    calldata_set_int(d,"growths",f->growths.load());calldata_set_int(d,"uploads",f->uploads.load());
+    calldata_set_int(d,"source_draws",f->source_draws.load());calldata_set_int(d,"reused_draws",f->reused_draws.load());
 }
 
 void *create(obs_data_t *settings, obs_source_t *context)
@@ -398,6 +446,7 @@ void *create(obs_data_t *settings, obs_source_t *context)
     f->treatment_strength = std::clamp(
         static_cast<float>(obs_data_get_double(settings, TREATMENT_STRENGTH)), 0.0f, 1.0f);
     f->refine_edges = obs_data_get_bool(settings, REFINE_EDGES);
+    f->reuse_source_draw=obs_data_get_bool(settings,"reuse_source_draw");
     f->matte_gamma = std::clamp(float(obs_data_get_double(settings, "matte_gamma")), .1f, 4.f);
     f->matte_low = std::clamp(float(obs_data_get_double(settings, "matte_low")), 0.f, .49f);
     f->matte_high = std::clamp(float(obs_data_get_double(settings, "matte_high")), .51f, 1.f);
@@ -416,6 +465,7 @@ void *create(obs_data_t *settings, obs_source_t *context)
         ++f->model_generation;
     }
     if (auto *procs = obs_source_get_proc_handler(context)) {
+        proc_handler_add(procs,"void sight_cutout_buffer_stats_v1(out int captures, out int completed, out int growths, out int uploads, out int source_draws, out int reused_draws)",buffer_stats,f);
         proc_handler_add(procs,
             "void sight_matte_read_v1(in int max_age_ms, in int known_sequence, in ptr snapshot, out bool available)",
             read_matte, f);
@@ -470,6 +520,7 @@ void update(void *data, obs_data_t *settings)
     f->treatment_strength = std::clamp(
         static_cast<float>(obs_data_get_double(settings, TREATMENT_STRENGTH)), 0.0f, 1.0f);
     f->refine_edges = obs_data_get_bool(settings, REFINE_EDGES);
+    f->reuse_source_draw=obs_data_get_bool(settings,"reuse_source_draw");
     f->matte_gamma = std::clamp(float(obs_data_get_double(settings, "matte_gamma")), .1f, 4.f);
     f->matte_low = std::clamp(float(obs_data_get_double(settings, "matte_low")), 0.f, .49f);
     f->matte_high = std::clamp(float(obs_data_get_double(settings, "matte_high")), .51f, 1.f);
@@ -494,9 +545,7 @@ void update(void *data, obs_data_t *settings)
         ++f->model_generation;
         f->announced_first_frame = false;
         f->reset_output_texture = true;
-    }
-    {
-        std::lock_guard lock(f->output_mutex);
+        std::lock_guard out_lock(f->output_mutex);
         f->new_output = false;
         f->output_mask.clear();
         f->shared_mask.clear();f->shared_width=f->shared_height=0;
@@ -516,6 +565,7 @@ void defaults(obs_data_t *settings)
     obs_data_set_default_int(settings, TREATMENT_MODE, 0);
     obs_data_set_default_double(settings, TREATMENT_STRENGTH, 0.7);
     obs_data_set_default_bool(settings, REFINE_EDGES, false);
+    obs_data_set_default_bool(settings,"reuse_source_draw",false);
     obs_data_set_default_double(settings, "matte_gamma", 1.);
     obs_data_set_default_double(settings, "matte_low", 0.);
     obs_data_set_default_double(settings, "matte_high", 1.);
@@ -622,6 +672,8 @@ obs_properties_t *properties(void *data)
     obs_property_set_long_description(refine,
         "Use source colors to guide mask upsampling. Optional GPU work; "
         "does not change the model or guarantee accurate hair detail.");
+    auto* reuse=obs_properties_add_bool(p,"reuse_source_draw","Reuse full-resolution source draw");
+    obs_property_set_long_description(reuse,"Optional: avoid a second source draw when analysis and source dimensions match. Nested/custom sources and downscaled captures keep the existing direct capture. Alpha compositing may differ; disable for exact legacy capture.");
     obs_properties_add_float_slider(p, "matte_gamma", "Matte gamma", .1, 4., .05);
     obs_properties_add_float_slider(p, "matte_low", "Background cutoff", 0., .49, .01);
     obs_properties_add_float_slider(p, "matte_high", "Foreground cutoff", .51, 1., .01);
@@ -644,6 +696,19 @@ obs_properties_t *properties(void *data)
 const char *name(void *)
 {
     return "lll.sight Subject Cutout (U2Net)";
+}
+
+gs_texture_t* capture_full(U2NetFilter*f,obs_source_t*target,uint32_t w,uint32_t h){
+    if(!f->full_resolution)f->full_resolution=gs_texrender_create(GS_RGBA,GS_ZS_NONE);
+    if(!f->full_resolution)return nullptr;
+    gs_texrender_reset(f->full_resolution);
+    if(!gs_texrender_begin(f->full_resolution,w,h))return nullptr;
+    gs_projection_push();gs_matrix_push();gs_matrix_identity();
+    gs_ortho(0,float(w),0,float(h),-100,100);
+    struct vec4 clear;vec4_zero(&clear);gs_clear(GS_CLEAR_COLOR,&clear,0,0);
+    sight_draw_analysis_source(target);++f->source_draws;
+    gs_matrix_pop();gs_projection_pop();gs_texrender_end(f->full_resolution);
+    return gs_texrender_get_texture(f->full_resolution);
 }
 
 void render(void *data, gs_effect_t *)
@@ -683,8 +748,18 @@ void render(void *data, gs_effect_t *)
     const auto edge=f->capture_edge.load();
     const auto [pw, ph] = capture_dimensions(width, height,edge);
 
+    const auto generation=f->model_generation.load();
+    const int matte_view=f->matte_view.load();
+    gs_texture_t* native_texture=nullptr;
+    // Reuse the already-needed full-resolution draw for ordinary input
+    // sources. Nested filters/custom draws retain their analysis behavior.
+    const bool reusable=f->reuse_source_draw&&pw==width&&ph==height&&obs_source_get_type(target)==OBS_SOURCE_TYPE_INPUT&&
+        !(obs_source_get_output_flags(target)&OBS_SOURCE_CUSTOM_DRAW)&&
+        matte_view!=4&&f->output_texture&&f->texture_generation==generation;
     if (f->model_ready && f->wants_frame.exchange(false)) {
+        const auto captured=std::chrono::steady_clock::now();
         bool submitted = false;
+        if(reusable)native_texture=capture_full(f,target,width,height);
         if (!f->capture)
             f->capture = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
         if (!f->stage || f->stage_width != pw || f->stage_height != ph) {
@@ -704,7 +779,14 @@ void render(void *data, gs_effect_t *)
                     static_cast<float>(height), -100, 100);
                 struct vec4 clear;vec4_zero(&clear);gs_clear(GS_CLEAR_COLOR,&clear,0,0);
                 gs_blend_state_push();gs_blend_function(GS_BLEND_ONE,GS_BLEND_ZERO);
-                sight_draw_analysis_source(target);
+                if(native_texture){
+                    auto* effect=obs_get_base_effect(OBS_EFFECT_DEFAULT);
+                    if(effect){
+                        gs_effect_set_texture(gs_effect_get_param_by_name(effect,"image"),native_texture);
+                        while(gs_effect_loop(effect,"Draw"))gs_draw_sprite(native_texture,0,width,height);
+                        ++f->reused_draws;
+                    }else{sight_draw_analysis_source(target);++f->source_draws;}
+                }else{sight_draw_analysis_source(target);++f->source_draws;}
                 gs_blend_state_pop();
                 gs_matrix_pop();
                 gs_projection_pop();
@@ -717,22 +799,11 @@ void render(void *data, gs_effect_t *)
                     uint32_t pitch = 0;
                     if (gs_stagesurface_map(f->stage, &pixels, &pitch)) {
                         if (pitch >= pw * 4) {
-                            std::vector<uint8_t> frame(static_cast<size_t>(pw) * ph * 4);
-                            for (uint32_t y = 0; y < ph; ++y)
-                                std::memcpy(frame.data() + static_cast<size_t>(y) * pw * 4,
-                                    pixels + static_cast<size_t>(y) * pitch, pw * 4);
-                            std::lock_guard lock(f->input_mutex);
-                            if (f->model_ready && !f->load_requested && edge==f->capture_edge.load()) {
-                                f->input_rgba = std::move(frame);
-                                f->frame_width = pw;
-                                f->frame_height = ph;
-                                f->frame_source_width = width;
-                                f->frame_source_height = height;
-                                f->frame_time = std::chrono::steady_clock::now();
-                                f->frame_pending = true;
-                                submitted = true;
-                                f->frame_cv.notify_one();
-                            }
+                            auto& frame=f->capture_scratch;
+                            resize_pixels(f,frame,size_t(pw)*ph*4);
+                            for(uint32_t y=0;y<ph;++y)
+                                std::memcpy(frame.data()+size_t(y)*pw*4,pixels+size_t(y)*pitch,pw*4);
+                            submitted=try_submit(f,generation,edge,pw,ph,width,height,captured);
                         }
                         gs_stagesurface_unmap(f->stage);
                     }
@@ -741,64 +812,31 @@ void render(void *data, gs_effect_t *)
         }
         // If capture failed, retry on the next OBS render. A successful
         // submission can only be rearmed after inference finishes.
-        if (!submitted && f->model_ready)
-            f->wants_frame = true;
+        if(!submitted)rearm_capture(f,generation);
     }
 
-    const int matte_view = f->matte_view.load();
     // Analysis-only mode publishes worker results without uploading/rendering
     // the treatment, and is safe to place among other analysis-only filters.
     if(matte_view==4){obs_source_skip_video_filter(f->context);return;}
-    const bool want_raw = matte_view == 2;
-    {
-        std::lock_guard lock(f->output_mutex);
-        if (!f->output_mask.empty() && (f->new_output || !f->output_texture || f->uploaded_raw != want_raw)) {
-            if (!f->output_texture ||
-                gs_texture_get_width(f->output_texture) != f->output_width ||
-                gs_texture_get_height(f->output_texture) != f->output_height) {
-                if (f->output_texture)
-                    gs_texture_destroy(f->output_texture);
-                f->output_texture = gs_texture_create(
-                    f->output_width, f->output_height, GS_R8, 1, nullptr, GS_DYNAMIC);
-            }
-            if (f->output_texture) {
-                const auto &pixels = want_raw && !f->raw_mask.empty() ? f->raw_mask : f->output_mask;
-                gs_texture_set_image(f->output_texture, pixels.data(), f->output_width, false);
-                f->uploaded_raw = want_raw;
-                f->new_output = false;
-            }
+    const bool want_raw=matte_view==2;
+    uint32_t mw=0,mh=0;uint64_t output_gen=0;
+    if(try_copy_matte(f,want_raw,mw,mh,output_gen)&&output_gen==f->model_generation){
+        if(!f->output_texture||gs_texture_get_width(f->output_texture)!=mw||
+           gs_texture_get_height(f->output_texture)!=mh){
+            if(f->output_texture)gs_texture_destroy(f->output_texture);
+            f->output_texture=gs_texture_create(mw,mh,GS_R8,1,nullptr,GS_DYNAMIC);
+        }
+        if(f->output_texture){
+            gs_texture_set_image(f->output_texture,f->upload_scratch.data(),mw,false);
+            f->uploaded_raw=want_raw;f->texture_generation=output_gen;++f->uploads;
         }
     }
-    if (!f->model_ready || !f->output_texture) {
-        obs_source_skip_video_filter(f->context);
-        return;
+    if(!f->model_ready||!f->output_texture||f->texture_generation!=f->model_generation){
+        obs_source_skip_video_filter(f->context);return;
     }
+    if(!native_texture)native_texture=capture_full(f,target,width,height);
+    if(!native_texture){obs_source_skip_video_filter(f->context);return;}
 
-    // The matte has its own inference resolution. The original colors must remain
-    // full-resolution in the output; this capture stays on the GPU.
-    if (!f->full_resolution)
-        f->full_resolution = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
-    if (!f->full_resolution) {
-        obs_source_skip_video_filter(f->context);
-        return;
-    }
-    gs_texrender_reset(f->full_resolution);
-    if (!gs_texrender_begin(f->full_resolution, width, height)) {
-        obs_source_skip_video_filter(f->context);
-        return;
-    }
-    gs_projection_push();
-    gs_matrix_push();
-    gs_matrix_identity();
-    gs_ortho(0, static_cast<float>(width), 0,
-             static_cast<float>(height), -100, 100);
-    struct vec4 clear;vec4_zero(&clear);gs_clear(GS_CLEAR_COLOR,&clear,0,0);
-    sight_draw_analysis_source(target);
-    gs_matrix_pop();
-    gs_projection_pop();
-    gs_texrender_end(f->full_resolution);
-
-    gs_texture_t *native_texture = gs_texrender_get_texture(f->full_resolution);
     gs_eparam_t *source_param = gs_effect_get_param_by_name(f->matte_effect, "original_frame");
     gs_eparam_t *mask_param = gs_effect_get_param_by_name(f->matte_effect, "segmentation_mask");
     gs_eparam_t *mode_param = gs_effect_get_param_by_name(f->matte_effect, "treatment_mode");
@@ -814,6 +852,9 @@ void render(void *data, gs_effect_t *)
         !strength_param || !texel_param || !refine_param) {
         obs_source_skip_video_filter(f->context);
         return;
+    }
+    if(!f->model_ready||f->texture_generation!=f->model_generation){
+        obs_source_skip_video_filter(f->context);return;
     }
     gs_effect_set_texture(source_param, native_texture);
     gs_effect_set_texture(mask_param, f->output_texture);

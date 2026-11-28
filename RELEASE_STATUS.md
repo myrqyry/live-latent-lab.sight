@@ -292,3 +292,22 @@ Qualification helper and documentation in tools/verify-cuda-texture.sh
 and docs/cuda-texture-interop.md. No Maxine dependency, model change,
 installation or push. Other effects/platforms and contention/device
 loss remain unqualified.
+
+## Subject Cutout reusable frame exchange (2026-11-27)
+
+Extended the texture-inference optimization work to the existing matte
+pipeline without replacing its CPU RGB/matte ABI, history, motion or
+Longpipe flow. Persistent pixel workspaces, fused normalization/resize,
+non-waiting render handoffs, upload outside publication mutex, generation
+checks, optional identical-size ordinary-source draw reuse (off by
+default). Actual CPU U2Net buffer regression passed. CUDA U2NetP, MODNet,
+Longpipe XS all passed eight-frame reuse and byte-identical shared matte
+snapshots against previous build (512x512 portrait, ABI 320x320).
+Six/eight/eight counted capacity growth requests stable after warm-up.
+Opt-in Longpipe flow run: 36 completions, 35 source draws avoided,
+ten stable capacity growth requests, motion/restore/toggle/ABI passed.
+Downscaled reuse was rejected after measurable U2NetP matte deviation.
+All 56 model-free tests passed; new contention regression required by CI.
+No claim of GPU-resident Cutout, full allocation-free operation, or
+measured end-to-end speedup. Depth and Preprocessors still pending.
+No install or push.

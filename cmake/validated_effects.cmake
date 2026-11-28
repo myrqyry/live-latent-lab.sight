@@ -825,6 +825,15 @@ target_compile_definitions(sight_sketch_handoff_test PRIVATE USE_ONNX_MEDIAPIPE)
 target_link_libraries(sight_sketch_handoff_test PRIVATE "${SIGHT_OBS_LIBRARY}" "${SIGHT_ORT_LIBRARY}")
 set_target_properties(sight_sketch_handoff_test PROPERTIES BUILD_RPATH "${SIGHT_ORT_LIB_DIR}")
 add_test(NAME sight_sketch_handoff_unit COMMAND sight_sketch_handoff_test)
+add_executable(sight_cutout_handoff_test tests/cutout_handoff_test.cpp
+    src/core/segmentation_processor.cpp src/common/sight-log.cpp)
+target_include_directories(sight_cutout_handoff_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src" "${SIGHT_ORT_INCLUDE}" "${SIGHT_OBS_INCLUDE}")
+target_compile_definitions(sight_cutout_handoff_test PRIVATE USE_ONNX_MEDIAPIPE SIGHT_ANIMEGAN_ONLY)
+target_link_libraries(sight_cutout_handoff_test PRIVATE "${SIGHT_OBS_LIBRARY}" "${SIGHT_ORT_LIBRARY}")
+set_target_properties(sight_cutout_handoff_test PROPERTIES BUILD_RPATH "${SIGHT_ORT_LIB_DIR}")
+add_test(NAME sight_cutout_handoff_unit COMMAND sight_cutout_handoff_test)
+
 
 # Explicitly exercise the no-ONNX build's unavailable-backend contract.
 add_executable(sight_segmentation_unavailable_test
@@ -1060,6 +1069,13 @@ if(SIGHT_ANIMEGAN_MODEL)
                         "${CMAKE_CURRENT_SOURCE_DIR}/data")
                 set_tests_properties(sight_u2net_obs_cutout PROPERTIES TIMEOUT 60
                     ENVIRONMENT "SIGHT_SMOKE_WIDTH=750;SIGHT_SMOKE_HEIGHT=1000;SIGHT_SMOKE_EFFECT=sight_u2net_filter")
+                add_test(NAME sight_u2net_obs_buffer_reuse
+                    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_obs_sight_render.sh"
+                        "$<TARGET_FILE:sight_obs_effect_render_smoke>"
+                        "$<TARGET_FILE:live-latent-lab-sight>"
+                        "${SIGHT_U2NET_MODEL}" "${CMAKE_CURRENT_SOURCE_DIR}/data")
+                set_tests_properties(sight_u2net_obs_buffer_reuse PROPERTIES TIMEOUT 60
+                    ENVIRONMENT "SIGHT_SMOKE_WIDTH=320;SIGHT_SMOKE_HEIGHT=180;SIGHT_SMOKE_EFFECT=sight_u2net_filter;SIGHT_SMOKE_CUTOUT_REUSE=1")
                 add_test(NAME sight_u2net_obs_refinement
                     COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_obs_sight_render.sh"
                         "$<TARGET_FILE:sight_obs_effect_render_smoke>"

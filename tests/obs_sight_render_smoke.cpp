@@ -561,6 +561,7 @@ int main(int argc, char **argv)
     }
     obs_data_t *settings = obs_data_create();
     obs_data_set_string(settings, "model_path", argv[2]);
+    if(std::getenv("SIGHT_SMOKE_CUTOUT_REUSE_DRAW"))obs_data_set_bool(settings,"reuse_source_draw",true);
     if(const char*family=std::getenv("SIGHT_SMOKE_CUTOUT_MODEL"))
         obs_data_set_int(settings,"cutout_model_family",std::atoi(family));
     if(const char*device=std::getenv("SIGHT_SMOKE_CUTOUT_DEVICE"))
@@ -2983,6 +2984,30 @@ int main(int argc, char **argv)
         }
     }
     if (std::strcmp(selected_filter, "sight_u2net_filter") == 0) {
+        if(std::getenv("SIGHT_SMOKE_CUTOUT_REUSE")){
+            int64_t captures=0,completed=0,growths=0,uploads=0,draws=0,reused=0;
+            auto stats=[&]{
+                calldata_t d{};bool ok=proc_handler_call(obs_source_get_proc_handler(filter),"sight_cutout_buffer_stats_v1",&d);
+                captures=calldata_int(&d,"captures");completed=calldata_int(&d,"completed");growths=calldata_int(&d,"growths");
+                uploads=calldata_int(&d,"uploads");draws=calldata_int(&d,"source_draws");reused=calldata_int(&d,"reused_draws");
+                calldata_free(&d);return ok;
+            };
+            auto advance=[&](int64_t n){
+                auto end=std::chrono::steady_clock::now()+std::chrono::seconds(20);
+                while(std::chrono::steady_clock::now()<end){
+                    if(!stats())return false;
+                    if(completed>=n)return render_image(source,current)&&stats();
+                    if(!render_image(source,current))return false;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+                }
+                return false;
+            };
+            bool warm=advance(4);auto initial=growths,prior=completed;
+            bool stable=warm&&advance(prior+4)&&growths==initial&&initial>0&&captures<=completed+1&&uploads>0&&(std::getenv("SIGHT_SMOKE_CUTOUT_REUSE_DRAW")?reused>0:reused==0);
+            std::cout<<"SIGHT_CUTOUT_REUSE warm="<<warm<<" growths="<<initial<<" final="<<growths<<" completed="<<completed
+                <<" captures="<<captures<<" uploads="<<uploads<<" source_draws="<<draws<<" reused_draws="<<reused<<" pass="<<stable<<"\n";
+            if(!stable){obs_source_filter_remove(source,filter);obs_source_release(filter);obs_source_release(source);obs_shutdown();return 1;}
+        }
         if(const char*expected_flow=std::getenv("SIGHT_SMOKE_CUTOUT_FLOW_EXPECT")){
             auto*props=obs_source_properties(filter);
             auto*status=props?obs_properties_get(props,"sight_backend_status"):nullptr;
@@ -3018,6 +3043,12 @@ int main(int argc, char **argv)
                 const size_t n=size_t(snap->width)*snap->height;
                 auto [lo,hi]=std::minmax_element(snap->pixels,snap->pixels+n);
                 ok=*hi>*lo+20;
+            }
+            if(ok&&std::getenv("SIGHT_SMOKE_CUTOUT_SNAPSHOT")){
+                FILE* output=std::fopen(std::getenv("SIGHT_SMOKE_CUTOUT_SNAPSHOT"),"wb");
+                const size_t bytes=size_t(snap->width)*snap->height;
+                if(!output)ok=false;
+                else{ok=std::fwrite(snap->pixels,1,bytes,output)==bytes&&ok;std::fclose(output);}
             }
             std::cout<<"SIGHT_CUTOUT_SHARED_ABI="<<ok<<" available="<<available<<" mask="<<snap->width<<"x"<<snap->height<<" source="<<snap->source_width<<"x"<<snap->source_height<<"\n";
             if(!ok){obs_source_filter_remove(source,filter);obs_source_release(filter);obs_source_release(source);obs_shutdown();return 1;}

@@ -53,3 +53,4 @@ sight_preprocessors_teed_missing_model_obs
 sight_preprocessors_pidinet_missing_model_obs
 sight_preprocessors_hed_missing_model_obs
 sight_sketch_handoff_unit
+sight_cutout_handoff_unit

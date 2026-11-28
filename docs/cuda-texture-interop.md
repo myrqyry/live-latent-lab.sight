@@ -99,3 +99,42 @@ Further filters, other GPUs, Windows D3D11 interop, macOS, high
 resolutions, multiple simultaneous effects and device-loss recovery
 remain unqualified. The optional Linux build is not a public
 redistribution approval or installed live plugin.
+
+## Subject Cutout: reuse without changing the matte contract
+
+Cutout's motion, history, Longpipe flow and shared matte ABI consume CPU
+RGB/matte data, so the Portrait Sketch GPU-resident pipeline cannot simply
+replace its current processing. Preserve those capabilities while removing
+unnecessary work:
+
+- Reuse capture, worker RGB, mask, raw/compact matte and upload buffers.
+- Fuse bilinear resize and NCHW normalization, retaining the original
+  intermediate uint8 rounding and the canvas used by Longpipe flow.
+- Graphics uses try-lock submission/publication; copy only the small mask
+  into reusable upload storage before calling the graphics driver.
+- Preserve published CPU matte bytes for independent consumers. Reject
+  obsolete generation tags during capture, publication and rendering.
+- Optional **Reuse full-resolution source draw** avoids a second draw on
+  ordinary inputs when source and analysis dimensions are identical.
+  Default off; downscaled and nested/custom source captures are unchanged.
+  This option can change alpha compositing, so it is not silently enabled.
+
+Measured on 2026-11-27 using actual OBS and the RTX 2070 SUPER:
+U2NetP, MODNet and Longpipe XS default capture produced byte-identical
+320x320 ABI matte snapshots versus the previous build on the same portrait.
+Each completed eight frames with no capacity growth after warm-up (six,
+eight and eight counted growth requests respectively). A prior exploratory
+reuse of downscaled capture changed U2NetP matte edges (mean 0.285/255,
+max 29/255), so that behavior is excluded from the final option.
+Longpipe XS with its actual flow model and opt-in same-size reuse
+completed 36 frames, avoided 35 source draws, retained ten counted
+capacity growth requests, and passed motion, disable/enable stabilization,
+restored position and shared ABI checks. Full U2Net CPU rendering at
+320x180 passed the new buffer regression. The 56 required model-free
+tests passed, including a non-waiting input/output contention regression.
+
+Counts measure the explicitly instrumented application pixel buffers,
+not every allocation made by OBS, ONNX Runtime or history/flow internals.
+This does not eliminate Cutout staging reads or provide a measured
+end-to-end speedup. GPU-native model transfers and remaining Depth and
+Preprocessors paths require separate qualification.
