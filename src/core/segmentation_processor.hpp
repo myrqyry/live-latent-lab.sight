@@ -4,12 +4,16 @@
 #include <string>
 #include <memory>
 #include <cstdint>
+#include "edge_tensor_io_stats.hpp"
 
 #ifdef USE_ONNX_MEDIAPIPE
 #include <onnxruntime_cxx_api.h>
 #endif
 
 namespace lll {
+#if defined(USE_ONNX_MEDIAPIPE) && defined(SIGHT_WITH_CUDA_CUTOUT_IO)
+class CutoutDeviceIO;
+#endif
 
     enum class SegModelType {
         U2Net,           // 320x320, standard normalization
@@ -38,6 +42,7 @@ namespace lll {
          */
         bool load(const char* model_path, SegModelType type = SegModelType::U2Net, bool use_gpu = true, bool require_cuda = false);
         
+        EdgeTensorIOStats tensor_io_stats() const;
         const char* configured_provider() const {return provider_;}
         const std::string& last_error() const {return last_error_;}
         bool is_ready() const { return ready_; }
@@ -45,6 +50,8 @@ namespace lll {
         unsigned input_width() const {return input_width_;}
         unsigned input_height() const {return input_height_;}
 #ifdef USE_ONNX_MEDIAPIPE
+        // Longpipe flow requires the exact CPU canvas even in device mode.
+        // Other device-mode families do not retain a host float canvas.
         const std::vector<float>& canvas_rgb() const {return input_tensor_values_;}
 #else
         const std::vector<float>& canvas_rgb() const {static const std::vector<float> empty;return empty;}
@@ -78,6 +85,9 @@ namespace lll {
         std::vector<char*> output_names_ptr_;
         std::vector<const char*> input_names_;
         std::vector<const char*> output_names_;
+#ifdef SIGHT_WITH_CUDA_CUTOUT_IO
+        std::unique_ptr<CutoutDeviceIO> device_io_;
+#endif
 #endif
 
         void preprocess(const uint8_t* src, int w, int h);

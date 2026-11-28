@@ -304,3 +304,47 @@ tests, original TEED and PiDiNet reference fingerprints retained.
 Capture, CPU scribble NMS and texture upload remain; no guarantee
 of frame-rate improvement, simultaneous GPU contention performance,
 Rust-enabled CUDA parity or other platform qualification.
+
+## Subject Cutout device tensor I/O (2026-11-28)
+
+Optional Linux flag `SIGHT_ENABLE_CUDA_CUTOUT_IO` defaults to the
+CUDA depth I/O build flag. Explicit `SIGHT_CUTOUT_CUDA_IO=device`
+selects the new worker-only device adapter for validated U2Net,
+MODNet or Longpipe contracts. The default and `host` retain the
+original CUDA/CPU host-tensor path. Required device mode rejects
+unavailable CUDA, unsupported model families and builds without
+the adapter. No model changes or additional runtime. Kernels are
+embedded PTX, with reusable pinned RGB input, bound float tensors,
+GPU align-corners bilinear resize with prior uint8 rounding, model
+specific normalization and finite-checked alpha conversion.
+Longpipe keeps its exact CPU float canvas for optical-flow consumers;
+other device-mode families do not retain a host float canvas.
+Source RGB, final byte matte, history, motion and shared CPU ABI
+remain available. Output is published only after valid inference.
+
+Actual U2NetP, Xenova MODNet FP32 and Longpipe XS landscape models
+on RTX 2070 SUPER/ORT CUDA 1.30.0, eight timed iterations after
+three warmups per source size. First host -> device medians (ms):
+- U2NetP: 320x180 16.623 -> 13.469; 512x512 15.823 -> 13.725;
+  384x224 15.166 -> 13.848.
+- MODNet: 320x180 12.019 -> 9.183; 512x512 16.797 -> 14.957;
+  384x224 11.493 -> 9.264.
+- Longpipe XS: 320x180 2.471 -> 2.255; 512x512 3.139 -> 2.395;
+  384x224 2.267 -> 2.267.
+
+All nine matte comparisons were byte-identical; Longpipe CPU canvas
+also exact. Payload is 3N uploaded and N+4 downloaded for source N
+pixels, vs nominal 16M bytes for original float tensors at model
+canvas M pixels. Reduction depends on geometry and can disappear
+at sufficiently large source sizes; not measured PCIe traffic.
+Resize/reuse, reload and explicit CPU conflict passed. Three model
+hardware CTests passed again. Actual OBS portrait smoke tests on
+512x512 inputs passed, including eight completions and stable
+instrumented buffer capacity per family, byte-identical 320x320
+shared ABI snapshots against the earlier qualified implementation.
+Longpipe actual flow model passed motion, off/on, restored position
+and shared matte ABI, with 36 completed frames and stable capacity.
+Normal CPU build passed all 57 required model-free tests.
+Opt-in retained pending larger model variants, contention and
+cross-platform testing. Existing capture readback, CPU history,
+Longpipe flow and final matte upload remain. No installation/push.

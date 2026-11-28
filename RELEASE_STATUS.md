@@ -390,3 +390,21 @@ Actual forced-device OBS safe/scribble/mode lifecycle passed,
 No model changes or additional runtime. Host capture and final
 upload remain; Cutout tensor I/O, Rust-enabled CUDA parity, other
 platforms and extended contention still pending. No install/push.
+
+## Subject Cutout CUDA matte tensor I/O (2026-11-28)
+
+Optional native device adapter for U2Net, MODNet and Longpipe with
+GPU resize/normalization and alpha quantization, persistent bound
+tensors and pinned compact RGB input. Longpipe retains exact CPU
+canvas for flow. Explicit SIGHT_CUTOUT_CUDA_IO=device required;
+original host path remains default. Actual RTX 2070 SUPER comparison
+of U2NetP, MODNet FP32 and Longpipe XS at three source sizes produced
+nine byte-identical mattes. 320x180 medians 16.623->13.469,
+12.019->9.183, 2.471->2.255 ms respectively. Three registered hardware
+model CTests passed on repeat. Actual OBS portrait snapshots matched
+earlier implementation byte-for-byte, all three shared matte ABIs
+and reuse passed; Longpipe flow motion/off/on/restored and 36 frames
+passed. CPU suite 57/57. Logical payload 4N+4 vs 16M, source/model
+geometry dependent. Host capture/history/flow/ABI/final upload
+remain; broader model variants and sustained GPU contention not
+qualified. No install or push.

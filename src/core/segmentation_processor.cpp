@@ -8,11 +8,22 @@
 #include <iostream>
 #include <cmath>
 #include <cstring>
+#include <cstdlib>
+#include <string_view>
 #include <algorithm>
 #include <stdexcept>
 #include <thread>
 
+#if defined(USE_ONNX_MEDIAPIPE) && defined(SIGHT_WITH_CUDA_CUTOUT_IO)
+#include "cutout-cuda-io.hpp"
+#endif
 namespace lll {
+EdgeTensorIOStats SegmentationProcessor::tensor_io_stats() const {
+#if defined(USE_ONNX_MEDIAPIPE) && defined(SIGHT_WITH_CUDA_CUTOUT_IO)
+    if(device_io_)return device_io_->stats;
+#endif
+    return {};
+}
 
 #ifdef USE_ONNX_MEDIAPIPE
 
@@ -29,6 +40,9 @@ bool SegmentationProcessor::load(const char* model_path, SegModelType type, bool
     ready_ = false;
     provider_=nullptr;
     last_error_.clear();
+#ifdef SIGHT_WITH_CUDA_CUTOUT_IO
+    device_io_.reset();
+#endif
     session_.reset();
     if (!model_path || !*model_path) return false;
 
@@ -148,7 +162,21 @@ bool SegmentationProcessor::load(const char* model_path, SegModelType type, bool
             output_names_.push_back(copy);
         }
         
-        // Pre-allocate buffers
+        // Only the three validated native model families use the new path.
+        const char* io=std::getenv("SIGHT_CUTOUT_CUDA_IO");
+        const bool force_device=io&&std::string_view(io)=="device";
+#ifdef SIGHT_WITH_CUDA_CUTOUT_IO
+        const bool cuda=provider_&&std::string_view(provider_).find("CUDA")!=std::string_view::npos;
+        const bool supported=type_==SegModelType::U2Net||type_==SegModelType::MODNet||type_==SegModelType::Longpipe;
+        if(force_device&&(!cuda||!supported))throw std::runtime_error("Cutout device I/O requires CUDA and a validated model family");
+        if(force_device){
+            auto device=std::make_unique<CutoutDeviceIO>();device->init();
+            device_io_=std::move(device);
+            provider_="ONNX Runtime CUDA (bound matte tensors)";
+        }
+#else
+        if(force_device)throw std::runtime_error("Cutout device I/O unavailable in this build");
+#endif
         input_tensor_values_.resize(input_width_ * input_height_ * 3);
 
         sight_logf(LOG_INFO, "[SegProcessor] Loaded %s (Size: %dx%d)", model_path, input_width_, input_height_);
@@ -157,6 +185,9 @@ bool SegmentationProcessor::load(const char* model_path, SegModelType type, bool
 
     } catch (const std::exception& e) {
         last_error_=e.what();
+#ifdef SIGHT_WITH_CUDA_CUTOUT_IO
+        device_io_.reset();
+#endif
         session_.reset();provider_=nullptr;
         sight_logf(LOG_ERROR, "[SegProcessor] Failed to load: %s", e.what());
         ready_ = false;
@@ -222,6 +253,22 @@ bool SegmentationProcessor::process(const uint8_t* rgb, int width, int height, u
         auto aligned=[&](int n){return std::max(32,int(std::lround(double(n)*512./longest/32.))*32);};
         input_width_=aligned(width);input_height_=aligned(height);
     }
+#ifdef SIGHT_WITH_CUDA_CUTOUT_IO
+    if(device_io_){
+        try{
+            if(width>4096||height>4096)throw std::runtime_error("Cutout device input exceeds supported geometry");
+            // Longpipe has an existing CPU canvas consumer (motion flow).
+            // Keep that canvas exact; avoid redundant host preparation for
+            // other families, whose matte/motion paths use original RGB.
+            if(type_==SegModelType::Longpipe)preprocess(rgb,width,height);
+            else input_tensor_values_.clear();
+            unsigned mode=type_==SegModelType::Longpipe?2u:type_==SegModelType::MODNet?1u:0u;
+            device_io_->run(*session_,input_names_[0],output_names_[0],rgb,
+                            width,height,input_width_,input_height_,mode,alpha_out);
+            last_error_.clear();return true;
+        }catch(const std::exception&e){last_error_=e.what();sight_logf(LOG_ERROR,"[SegProcessor] Device inference: %s",e.what());return false;}
+    }
+#endif
     preprocess(rgb, width, height);
 
     std::vector<int64_t> input_shape = {1, 3, input_height_, input_width_};

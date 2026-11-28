@@ -1775,3 +1775,48 @@ if(SIGHT_ENABLE_CUDA_EDGE_IO)
         set_tests_properties(sight_pidinet_cuda_device_io PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
     endif()
 endif()
+
+option(SIGHT_ENABLE_CUDA_CUTOUT_IO "Enable optional CUDA-bound subject matte tensors" ${SIGHT_ENABLE_CUDA_DEPTH_IO})
+if(SIGHT_ENABLE_CUDA_CUTOUT_IO)
+    if(NOT EXISTS "${SIGHT_ORT_LIB_DIR}/libonnxruntime_providers_cuda.so")
+        message(FATAL_ERROR "Cutout device I/O requires matching CUDA ONNX Runtime SDK")
+    endif()
+    find_package(CUDAToolkit REQUIRED)
+    set(SIGHT_CUDA_TEXTURE_ARCH "75" CACHE STRING "Minimum CUDA virtual architecture for texture kernels")
+    set(_cutout_ptx "${CMAKE_CURRENT_BINARY_DIR}/cutout-cuda.ptx")
+    set(_cutout_header "${CMAKE_CURRENT_BINARY_DIR}/sight-cutout-cuda-ptx.hpp")
+    add_custom_command(OUTPUT "${_cutout_header}"
+        COMMAND "${CUDAToolkit_NVCC_EXECUTABLE}" --ptx "-arch=compute_${SIGHT_CUDA_TEXTURE_ARCH}" -O3 --fmad=false --prec-div=true
+                "${CMAKE_CURRENT_SOURCE_DIR}/src/core/cutout-cuda-kernels.cu" -o "${_cutout_ptx}"
+        COMMAND "${CMAKE_COMMAND}" "-DINPUT=${_cutout_ptx}" "-DOUTPUT=${_cutout_header}" "-DSYMBOL=sight_cutout_ptx"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed-depth-ptx.cmake"
+        DEPENDS src/core/cutout-cuda-kernels.cu cmake/embed-depth-ptx.cmake
+        BYPRODUCTS "${_cutout_ptx}" VERBATIM)
+    add_custom_target(sight_cutout_cuda_ptx DEPENDS "${_cutout_header}")
+    add_executable(sight_cutout_cuda_io_test tests/verify-cutout-cuda-io.cpp src/core/segmentation_processor.cpp src/common/sight-log.cpp)
+    target_compile_definitions(sight_cutout_cuda_io_test PRIVATE USE_ONNX_MEDIAPIPE SIGHT_ANIMEGAN_ONLY)
+    target_include_directories(sight_cutout_cuda_io_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" "${SIGHT_ORT_INCLUDE}" "${SIGHT_OBS_INCLUDE}")
+    target_link_libraries(sight_cutout_cuda_io_test PRIVATE "${SIGHT_ORT_LIBRARY}" "${SIGHT_OBS_LIBRARY}")
+    set_target_properties(sight_cutout_cuda_io_test PROPERTIES BUILD_RPATH "${SIGHT_ORT_LIB_DIR}")
+    foreach(target IN ITEMS live-latent-lab-sight sight_cutout_cuda_io_test)
+        add_dependencies(${target} sight_cutout_cuda_ptx)
+        target_include_directories(${target} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+        target_compile_definitions(${target} PRIVATE SIGHT_WITH_CUDA_CUTOUT_IO)
+        target_link_libraries(${target} PRIVATE CUDA::cuda_driver)
+    endforeach()
+    foreach(family IN ITEMS u2net modnet longpipe)
+        if(family STREQUAL "u2net")
+            set(_cutout_model "${SIGHT_U2NETP_MODEL}")
+        elseif(family STREQUAL "modnet")
+            set(_cutout_model "${SIGHT_MODNET_MODEL}")
+        else()
+            set(_cutout_model "${SIGHT_LONGPIPE_MODEL}")
+        endif()
+        if(_cutout_model)
+            add_test(NAME sight_${family}_cuda_matte_io
+                COMMAND sight_cutout_cuda_io_test ${family} "${_cutout_model}")
+            set_tests_properties(sight_${family}_cuda_matte_io PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
+        endif()
+    endforeach()
+
+endif()
