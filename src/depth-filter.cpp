@@ -89,11 +89,13 @@ struct DepthFilter {
     std::string requested_path;
     std::string active_path;
     sight_backend::Status backend_status;
-    uint64_t model_generation = 0;
+    std::atomic<uint64_t> model_generation{0};
     uint32_t frame_width = 0, frame_height = 0;
     uint32_t frame_source_width=0,frame_source_height=0;
     uint64_t frame_capture_ms=0;
-    std::vector<uint8_t> input_rgba;
+    std::vector<uint8_t> input_rgba,capture_scratch,upload_scratch;
+    std::atomic<int64_t> captures{0},completed{0},growths{0},uploads{0},loads{0};
+    uint64_t texture_generation=0;
     std::atomic<bool> model_ready{false};
     std::atomic<uint32_t> edge{252};
     std::atomic<unsigned> cadence{4};
@@ -132,6 +134,47 @@ struct DepthFilter {
     uint32_t stage_width = 0, stage_height = 0;
 };
 
+void resize_pixels(DepthFilter*f,std::vector<uint8_t>&v,size_t n){
+    if(v.capacity()<n)++f->growths;
+    v.resize(n);
+}
+bool try_submit(DepthFilter*f,uint64_t generation,uint32_t w,uint32_t h,uint32_t sw,uint32_t sh,uint64_t capture_ms){
+    std::unique_lock lock(f->input_mutex,std::try_to_lock);
+    if(!lock||!f->model_ready||f->load_requested||f->stopping||f->frame_pending||
+        generation!=f->model_generation||f->capture_scratch.size()!=size_t(w)*h*4)return false;
+    f->capture_scratch.swap(f->input_rgba);
+    f->frame_width=w;f->frame_height=h;f->frame_source_width=sw;f->frame_source_height=sh;
+    f->frame_capture_ms=capture_ms;f->frame_pending=true;++f->captures;
+    f->next_capture=lll::next_depth_capture(f->render_number,f->cadence.load());
+    lock.unlock();f->frame_cv.notify_one();return true;
+}
+bool try_copy_depth(DepthFilter*f,uint32_t&w,uint32_t&h,uint64_t&generation){
+    std::unique_lock lock(f->output_mutex,std::try_to_lock);
+    if(!lock||!f->output_sequence||f->output_generation!=f->model_generation||
+       (!f->new_output&&f->output_texture&&f->texture_generation==f->output_generation)||
+       f->output_mask.size()!=size_t(f->output_width)*f->output_height||f->output_mask.empty())return false;
+    resize_pixels(f,f->upload_scratch,f->output_mask.size());
+    std::memcpy(f->upload_scratch.data(),f->output_mask.data(),f->output_mask.size());
+    w=f->output_width;h=f->output_height;generation=f->output_generation;f->new_output=false;
+    return true;
+}
+bool observe_geometry(DepthFilter*f,uint32_t w,uint32_t h){
+    if(!f->source_geometry.width||!f->source_geometry.height){
+        f->source_geometry.observe(w,h);return true;
+    }
+    if(f->source_geometry.width==w&&f->source_geometry.height==h)return true;
+    // Defer resize rather than wait for worker/control ownership. Until
+    // accepted, render passthrough and the ABI rejects mismatched geometry.
+    std::unique_lock lock(f->input_mutex,std::try_to_lock);
+    if(!lock)return false;
+    f->source_geometry.observe(w,h);
+    if(f->model_ready&&!f->load_requested){++f->model_generation;f->wants_frame=true;}
+    f->frame_pending=false;f->input_rgba.clear();f->next_capture=0;f->last_successful_ms=0;
+    f->reset_output_texture=true;f->announced_expired_depth=false;
+    lock.unlock();
+    blog(LOG_INFO,"[Sight/Depth] Source geometry changed to %ux%u; depth invalidated",w,h);
+    return true;
+}
 void worker_main(DepthFilter *f)
 {
     lll::OnnxDepthProcessor processor;
@@ -143,8 +186,8 @@ void worker_main(DepthFilter *f)
     double accumulated_inference_ms = 0;
     uint32_t measured_frames = 0;
     bool announced_change_aware = false;
+    std::vector<uint8_t> frame,rgb,mask;
     for (;;) {
-        std::vector<uint8_t> frame;
         std::string model_path;
         uint32_t w = 0, h = 0,sw=0,sh=0;
         uint64_t capture_ms=0;
@@ -168,13 +211,14 @@ void worker_main(DepthFilter *f)
                 w = f->frame_width;
                 h = f->frame_height;
                 sw=f->frame_source_width;sh=f->frame_source_height;capture_ms=f->frame_capture_ms;
-                frame = std::move(f->input_rgba);
+                frame.swap(f->input_rgba);
                 f->frame_pending = false;
             }
         }
 
         if (do_load) {
             const bool loaded = !model_path.empty() && processor.load(model_path);
+            if(loaded)++f->loads;
             previous_depth.clear();
             previous_rgb.clear();
             previous_generation = 0;
@@ -202,16 +246,17 @@ void worker_main(DepthFilter *f)
         if (!f->model_ready || !w || !h ||
             frame.size() != static_cast<size_t>(w) * h * 4) {
             std::lock_guard lock(f->input_mutex);
-            if (f->model_ready && generation == f->model_generation)
-                f->wants_frame = true;
+            if(f->model_ready&&generation==f->model_generation){
+                frame.swap(f->input_rgba);f->wants_frame=true;
+            }
             continue;
         }
 
-        std::vector<uint8_t> rgb(static_cast<size_t>(w) * h * 3);
+        resize_pixels(f,rgb,size_t(w)*h*3);
         for (size_t i = 0; i < static_cast<size_t>(w) * h; ++i)
             std::memcpy(&rgb[i * 3], &frame[i * 4], 3);
 
-        std::vector<uint8_t> mask;
+        resize_pixels(f,mask,size_t(w)*h);
         const auto inference_start = Clock::now();
         const bool succeeded = processor.estimate(rgb.data(), w, h, mask);
         const double inference_ms = std::chrono::duration<double, std::milli>(
@@ -224,17 +269,15 @@ void worker_main(DepthFilter *f)
                 f->backend_status.health.record(false,inference_ms,Clock::now());
                 std::lock_guard out_lock(f->output_mutex);
                 f->output_sequence=0;
-                f->wants_frame = true;
+                frame.swap(f->input_rgba);f->wants_frame=true;
             }
             continue;
         }
 
-        // Drop stale results *before* applying temporal smoothing, so
-        // discarded old-model/old-resolution results cannot poison history.
+        // History is worker-owned. A generation mismatch clears it on
+        // the next result; do not hold the input mutex during pixel loops.
+        if(generation!=f->model_generation||!f->model_ready)continue;
         {
-            std::lock_guard lock(f->input_mutex);
-            if (generation != f->model_generation || !f->model_ready)
-                continue;
             // History from another model/input generation is never valid,
             // even if a quick setting change returns to identical dimensions.
             if (generation != previous_generation) {
@@ -258,13 +301,16 @@ void worker_main(DepthFilter *f)
                     lll::blend_depth_result(mask, previous_depth, blend);
                 }
             }
-            previous_rgb = std::move(rgb);
-            previous_depth = mask;
+            previous_rgb.swap(rgb);
+            resize_pixels(f,previous_depth,mask.size());
+            std::copy(mask.begin(),mask.end(),previous_depth.begin());
             previous_width = w;
             previous_height = h;
             previous_generation = generation;
+            std::lock_guard lock(f->input_mutex);
+            if(generation!=f->model_generation||!f->model_ready)continue;
             std::lock_guard out_lock(f->output_mutex);
-            f->output_mask = std::move(mask);
+            f->output_mask.swap(mask);frame.swap(f->input_rgba);++f->completed;
             f->output_width = w;
             f->output_height = h;
             f->output_source_width=sw;f->output_source_height=sh;
@@ -321,6 +367,13 @@ void read_depth(void* data,calldata_t* params)
     calldata_set_bool(params,"available",true);
 }
 
+void buffer_stats(void*data,calldata_t*d){
+    auto*f=static_cast<DepthFilter*>(data);
+    calldata_set_int(d,"captures",f->captures.load());calldata_set_int(d,"completed",f->completed.load());
+    calldata_set_int(d,"growths",f->growths.load());calldata_set_int(d,"uploads",f->uploads.load());
+    calldata_set_int(d,"loads",f->loads.load());
+}
+
 void *create(obs_data_t *settings, obs_source_t *context)
 {
     auto *f = new DepthFilter;
@@ -342,8 +395,10 @@ void *create(obs_data_t *settings, obs_source_t *context)
         f->load_requested = true;
         ++f->model_generation;
     }
-    if(auto* procs=obs_source_get_proc_handler(context))
+    if(auto* procs=obs_source_get_proc_handler(context)){
         proc_handler_add(procs,"void sight_depth_read_v1(in int max_age_ms, in int known_sequence, in ptr snapshot, out bool available)",read_depth,f);
+        proc_handler_add(procs,"void sight_depth_buffer_stats_v1(out int captures, out int completed, out int growths, out int uploads, out int loads)",buffer_stats,f);
+    }
     f->worker = std::thread(worker_main, f);
     if (f->load_requested)
         f->frame_cv.notify_one();
@@ -417,9 +472,7 @@ void update(void *data, obs_data_t *settings)
         f->announced_first_frame = false;
         f->reset_output_texture = true;
         f->last_successful_ms = 0;
-    }
-    {
-        std::lock_guard lock(f->output_mutex);
+        std::lock_guard out_lock(f->output_mutex);
         f->new_output = false;
         f->output_mask.clear();
         f->output_sequence=0;
@@ -564,31 +617,8 @@ void render(void *data, gs_effect_t *)
     // A new camera/source size invalidates the spatial correspondence of
     // every old depth pixel. Cancel stale queued/in-flight inference and
     // demand a fresh capture; do not restart a model still loading.
-    if (f->source_geometry.observe(width, height)) {
-        {
-            std::lock_guard lock(f->input_mutex);
-            if (f->model_ready && !f->load_requested) {
-                ++f->model_generation;
-                f->wants_frame = true;
-            }
-            f->frame_pending = false;
-            f->input_rgba.clear();
-            f->next_capture = 0;
-        }
-        {
-            std::lock_guard lock(f->output_mutex);
-            f->new_output = false;
-            f->output_mask.clear();
-            f->output_sequence=0;
-            f->last_successful_ms = 0;
-        }
-        if (f->output_texture) {
-            gs_texture_destroy(f->output_texture);
-            f->output_texture = nullptr;
-        }
-        f->announced_expired_depth = false;
-        blog(LOG_INFO, "[Sight/Depth] Source geometry changed to %ux%u; depth invalidated",
-             width, height);
+    if(!observe_geometry(f,width,height)){
+        obs_source_skip_video_filter(f->context);return;
     }
     if (f->reset_output_texture.exchange(false) && f->output_texture) {
         gs_texture_destroy(f->output_texture);
@@ -610,6 +640,7 @@ void render(void *data, gs_effect_t *)
             return;
         }
     }
+    const auto generation=f->model_generation.load();
     const auto [pw, ph] = capture_dimensions(width, height, f->edge.load());
     ++f->render_number;
 
@@ -650,23 +681,11 @@ void render(void *data, gs_effect_t *)
                     uint32_t pitch = 0;
                     if (gs_stagesurface_map(f->stage, &pixels, &pitch)) {
                         if (pitch >= pw * 4) {
-                            std::vector<uint8_t> frame(static_cast<size_t>(pw) * ph * 4);
-                            for (uint32_t y = 0; y < ph; ++y)
-                                std::memcpy(frame.data() + static_cast<size_t>(y) * pw * 4,
-                                    pixels + static_cast<size_t>(y) * pitch, pw * 4);
-                            std::lock_guard lock(f->input_mutex);
-                            if (f->model_ready && !f->load_requested) {
-                                f->input_rgba = std::move(frame);
-                                f->frame_width = pw;
-                                f->frame_height = ph;
-                                f->frame_source_width=width;f->frame_source_height=height;
-                                f->frame_capture_ms=capture_ms;
-                                f->frame_pending = true;
-                                submitted = true;
-                                f->next_capture = lll::next_depth_capture(
-                                    f->render_number, f->cadence.load());
-                                f->frame_cv.notify_one();
-                            }
+                            auto&frame=f->capture_scratch;
+                            resize_pixels(f,frame,size_t(pw)*ph*4);
+                            for(uint32_t y=0;y<ph;++y)
+                                std::memcpy(frame.data()+size_t(y)*pw*4,pixels+size_t(y)*pitch,pw*4);
+                            submitted=try_submit(f,generation,pw,ph,width,height,capture_ms);
                         }
                         gs_stagesurface_unmap(f->stage);
                     }
@@ -675,31 +694,25 @@ void render(void *data, gs_effect_t *)
         }
         // If capture failed, retry on the next OBS render. A successful
         // submission can only be rearmed after inference finishes.
-        if (!submitted && f->model_ready)
+        if(!submitted&&f->model_ready&&generation==f->model_generation)
             f->wants_frame = true;
     }
 
     if(f->view_mode==2){obs_source_skip_video_filter(f->context);return;}
-    {
-        std::lock_guard lock(f->output_mutex);
-        if (f->new_output) {
-            if (!f->output_texture ||
-                gs_texture_get_width(f->output_texture) != f->output_width ||
-                gs_texture_get_height(f->output_texture) != f->output_height) {
-                if (f->output_texture)
-                    gs_texture_destroy(f->output_texture);
-                f->output_texture = gs_texture_create(
-                    f->output_width, f->output_height, GS_R8, 1, nullptr, GS_DYNAMIC);
-            }
-            if (f->output_texture)
-                gs_texture_set_image(f->output_texture, f->output_mask.data(),
-                    f->output_width, false);
-            f->new_output = false;
+    uint32_t mw=0,mh=0;uint64_t output_gen=0;
+    if(try_copy_depth(f,mw,mh,output_gen)&&output_gen==f->model_generation){
+        if(!f->output_texture||gs_texture_get_width(f->output_texture)!=mw||
+           gs_texture_get_height(f->output_texture)!=mh){
+            if(f->output_texture)gs_texture_destroy(f->output_texture);
+            f->output_texture=gs_texture_create(mw,mh,GS_R8,1,nullptr,GS_DYNAMIC);
+        }
+        if(f->output_texture){
+            gs_texture_set_image(f->output_texture,f->upload_scratch.data(),mw,false);
+            f->texture_generation=output_gen;++f->uploads;
         }
     }
-    if (!f->model_ready || !f->output_texture) {
-        obs_source_skip_video_filter(f->context);
-        return;
+    if(!f->model_ready||!f->output_texture||f->texture_generation!=f->model_generation){
+        obs_source_skip_video_filter(f->context);return;
     }
     const uint64_t last_success = f->last_successful_ms.load();
     const uint64_t max_age_ms = uint64_t(f->max_depth_age_seconds.load()) * 1000;
@@ -749,6 +762,9 @@ void render(void *data, gs_effect_t *)
     if (!native_texture || !source_param || !mask_param) {
         obs_source_skip_video_filter(f->context);
         return;
+    }
+    if(!f->model_ready||f->texture_generation!=f->model_generation){
+        obs_source_skip_video_filter(f->context);return;
     }
     gs_effect_set_texture(source_param, native_texture);
     gs_effect_set_texture(mask_param, f->output_texture);

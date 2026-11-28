@@ -833,6 +833,14 @@ target_compile_definitions(sight_cutout_handoff_test PRIVATE USE_ONNX_MEDIAPIPE 
 target_link_libraries(sight_cutout_handoff_test PRIVATE "${SIGHT_OBS_LIBRARY}" "${SIGHT_ORT_LIBRARY}")
 set_target_properties(sight_cutout_handoff_test PROPERTIES BUILD_RPATH "${SIGHT_ORT_LIB_DIR}")
 add_test(NAME sight_cutout_handoff_unit COMMAND sight_cutout_handoff_test)
+add_executable(sight_depth_handoff_test tests/depth_handoff_test.cpp
+    src/core/onnx_depth_processor.cpp src/common/sight-log.cpp)
+target_include_directories(sight_depth_handoff_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src" "${SIGHT_ORT_INCLUDE}" "${SIGHT_OBS_INCLUDE}")
+target_link_libraries(sight_depth_handoff_test PRIVATE "${SIGHT_OBS_LIBRARY}" "${SIGHT_ORT_LIBRARY}")
+set_target_properties(sight_depth_handoff_test PROPERTIES BUILD_RPATH "${SIGHT_ORT_LIB_DIR}")
+add_test(NAME sight_depth_handoff_unit COMMAND sight_depth_handoff_test)
+
 
 
 # Explicitly exercise the no-ONNX build's unavailable-backend contract.
@@ -1140,6 +1148,13 @@ if(SIGHT_ANIMEGAN_MODEL)
                       "SIGHT_SMOKE_WIDTH=128;SIGHT_SMOKE_HEIGHT=128;SIGHT_SMOKE_EFFECT=sight_depth_filter;SIGHT_SMOKE_DEPTH_EDGE=252;SIGHT_SMOKE_DEPTH_MAX_AGE=2;SIGHT_SMOKE_DEPTH_VERIFY_EXPIRY=6500")
                 # If the OBS source geometry changes, old depth must not
                 # stretch across the resized source before new inference.
+                add_test(NAME sight_depth_obs_buffer_reuse
+                    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_obs_sight_render.sh"
+                        "$<TARGET_FILE:sight_obs_effect_render_smoke>"
+                        "$<TARGET_FILE:live-latent-lab-sight>"
+                        "${SIGHT_DEPTH_MODEL}" "${CMAKE_CURRENT_SOURCE_DIR}/data")
+                set_tests_properties(sight_depth_obs_buffer_reuse PROPERTIES TIMEOUT 90
+                    ENVIRONMENT "SIGHT_SMOKE_WIDTH=320;SIGHT_SMOKE_HEIGHT=180;SIGHT_SMOKE_EFFECT=sight_depth_filter;SIGHT_SMOKE_DEPTH_REUSE=1;SIGHT_SMOKE_DEPTH_REUSE_EDGE=1;SIGHT_SMOKE_DEPTH_REJECT_STALE=1")
                 add_test(NAME sight_depth_obs_resize_passthrough
                     COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_obs_sight_render.sh"
                         "$<TARGET_FILE:sight_obs_effect_render_smoke>"

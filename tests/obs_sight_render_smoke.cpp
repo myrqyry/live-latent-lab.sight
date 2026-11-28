@@ -3318,6 +3318,37 @@ int main(int argc, char **argv)
             return 1;
         }
     }
+    if(std::strcmp(selected_filter,"sight_depth_filter")==0&&std::getenv("SIGHT_SMOKE_DEPTH_REUSE")){
+        int64_t captures=0,completed=0,growths=0,uploads=0,loads=0;
+        auto stats=[&]{
+            calldata_t d{};bool ok=proc_handler_call(obs_source_get_proc_handler(filter),"sight_depth_buffer_stats_v1",&d);
+            captures=calldata_int(&d,"captures");completed=calldata_int(&d,"completed");growths=calldata_int(&d,"growths");
+            uploads=calldata_int(&d,"uploads");loads=calldata_int(&d,"loads");calldata_free(&d);return ok;
+        };
+        auto advance=[&](int64_t n){
+            auto end=std::chrono::steady_clock::now()+std::chrono::seconds(25);
+            while(std::chrono::steady_clock::now()<end){
+                if(!stats())return false;
+                if(completed>=n)return render_image(source,current)&&stats();
+                if(!render_image(source,current))return false;
+                std::this_thread::sleep_for(std::chrono::milliseconds(30));
+            }
+            return false;
+        };
+        bool warm=advance(4);auto initial=growths,prior=completed;
+        bool stable=warm&&advance(prior+4)&&growths==initial&&initial>0&&uploads>0&&loads==1;
+        std::cout<<"SIGHT_DEPTH_REUSE warm="<<warm<<" growths="<<initial<<" final="<<growths<<" completed="<<completed
+            <<" captures="<<captures<<" uploads="<<uploads<<" loads="<<loads<<" pass="<<stable<<"\n";
+        if(!stable){obs_source_filter_remove(source,filter);obs_source_release(filter);obs_source_release(source);obs_shutdown();return 1;}
+        if(std::getenv("SIGHT_SMOKE_DEPTH_REUSE_EDGE")){
+            auto* edit=obs_source_get_settings(filter);obs_data_set_int(edit,"inference_edge",336);obs_source_update(filter,edit);obs_data_release(edit);
+            bool changed=advance(completed+4)&&loads==1;
+            auto grown=growths;
+            changed=changed&&advance(completed+4)&&growths==grown&&loads==1;
+            std::cout<<"SIGHT_DEPTH_REUSE_EDGE loads="<<loads<<" growths="<<grown<<" final="<<growths<<" pass="<<changed<<"\n";
+            if(!changed){obs_source_filter_remove(source,filter);obs_source_release(filter);obs_source_release(source);obs_shutdown();return 1;}
+        }
+    }
     if (std::strcmp(selected_filter, "sight_depth_filter") == 0 &&
         std::getenv("SIGHT_SMOKE_DEPTH_VERIFY_EXPIRY")) {
         // After real model inference, pause all OBS rendering so capture

@@ -311,3 +311,17 @@ All 56 model-free tests passed; new contention regression required by CI.
 No claim of GPU-resident Cutout, full allocation-free operation, or
 measured end-to-end speedup. Depth and Preprocessors still pending.
 No install or push.
+
+## Depth Camera reusable frame exchange (2026-11-28)
+
+Reusable capture/RGB/depth/history/upload buffers; non-waiting render
+handoffs and deferred geometry invalidation; generation-tagged textures,
+smoothing outside the control mutex. CPU and actual CUDA Depth Anything
+V2 tests passed: eight initial growth requests stable across eight
+completions, edge change to 336 stable at sixteen, one model load total,
+source resize immediate passthrough then recovery. CUDA shared depth
+snapshot range/metadata/known sequence/ABI/disable/expiry/recovery
+passed. 57 model-free tests passed. Original normalization and history
+algorithm retained. Host staging and CPU depth ABI retained; no new
+GPU-resident depth inference or end-to-end performance claim.
+No install or push.

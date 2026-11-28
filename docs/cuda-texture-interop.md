@@ -138,3 +138,27 @@ not every allocation made by OBS, ONNX Runtime or history/flow internals.
 This does not eliminate Cutout staging reads or provide a measured
 end-to-end speedup. GPU-native model transfers and remaining Depth and
 Preprocessors paths require separate qualification.
+
+## Depth Camera frame exchange
+
+Keep the existing depth normalization, temporal blend, change-aware
+history and shared CPU depth ABI. Reuse capture, worker RGB, depth,
+history and upload workspaces; move smoothing outside the input mutex;
+take output snapshots with a non-waiting lock and release it before
+texture operations. Source geometry invalidation also uses a try-lock:
+if busy, defer the change and pass through rather than wait or display
+a mismatched map. Generation checks discard obsolete captures/results
+and prevent displaying an obsolete texture.
+
+Actual Depth Anything V2 inference in OBS passed on CPU and CUDA
+(320x180 source; 252x140 inference). Eight counted capacity growth
+requests remained unchanged across eight completed frames. Changing
+inference edge to 336 increased the count to 16, then remained stable
+across four more frames; one model load total. Resizing the source to
+368x208 immediately passed through unchanged pixels and subsequently
+recovered real depth. The CUDA analysis-only shared ABI passed range,
+metadata, known sequence, invalid ABI, disable, expiration and recovery.
+57 required model-free tests passed, including the new contention
+and deferred geometry regression. Counts cover instrumented pixel
+vectors, not all ONNX or driver allocations. GPU-native model I/O
+binding and staging removal are not implemented for Depth yet.
