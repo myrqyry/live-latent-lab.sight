@@ -370,3 +370,23 @@ Forced-device OBS Preprocessors HED rendering and mode lifecycle
 passed; ordinary CPU suite 57/57 and original HED model parity
 passed. Host capture, CPU scribble NMS and final upload remain.
 TEED, PiDiNet and Cutout tensor I/O are still pending. No install/push.
+
+## TEED and PiDiNet CUDA tensor I/O (2026-11-28)
+
+Shared native CUDA device I/O adapter and kernels for four-map
+TEED logit fusion and single-map PiDiNet probability quantization.
+Pinned RGB/BGR byte inputs, reusable bound tensors, embedded PTX,
+compact edge output. Both actual models matched their previous CUDA
+soft/safe maps byte for byte across three resolutions in two runs.
+TEED first medians 0.902->0.646, 1.870->1.498, 5.388->3.566 ms;
+second run confirmed latency improvements. PiDiNet timings mixed:
+first 3.274->3.549, 7.007->7.612, 19.406->19.401 ms;
+second 3.809->3.239, 7.525->7.541, 18.788->17.584.
+TEED device I/O defaults on in enabled CUDA builds; PiDiNet remains
+explicit opt-in. Logical model-boundary payload about 86%/75%
+smaller respectively, not physical PCIe instrumentation.
+Actual forced-device OBS safe/scribble/mode lifecycle passed,
+57/57 CPU model-free tests and original model hashes passed.
+No model changes or additional runtime. Host capture and final
+upload remain; Cutout tensor I/O, Rust-enabled CUDA parity, other
+platforms and extended contention still pending. No install/push.

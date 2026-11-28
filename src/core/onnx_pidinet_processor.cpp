@@ -9,9 +9,23 @@
 #include <cmath>
 #include <stdexcept>
 
+#ifdef SIGHT_WITH_CUDA_EDGE_IO
+#include "edge-cuda-io.hpp"
+#endif
 namespace lll {
+OnnxPidiNetProcessor::OnnxPidiNetProcessor()=default;
+OnnxPidiNetProcessor::~OnnxPidiNetProcessor()=default;
+EdgeTensorIOStats OnnxPidiNetProcessor::tensor_io_stats() const {
+#ifdef SIGHT_WITH_CUDA_EDGE_IO
+    if(device_io_)return device_io_->stats;
+#endif
+    return {};
+}
 bool OnnxPidiNetProcessor::load(const std::string &path)
 {
+#ifdef SIGHT_WITH_CUDA_EDGE_IO
+    device_io_.reset();
+#endif
     session_.reset();
     input_.clear();
     last_error_.clear();
@@ -24,8 +38,10 @@ bool OnnxPidiNetProcessor::load(const std::string &path)
         options.SetIntraOpNumThreads(2);
         options.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
         options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-        auto candidate = open_onnx_session(
-            environment_, path.c_str(), options);
+        const char* request=std::getenv("SIGHT_ONNX_DEVICE");
+        const char* provider=nullptr;
+        const bool require_cuda=request&&std::string_view(request)=="cuda";
+        auto candidate=open_onnx_session(environment_,path.c_str(),options,true,&provider,require_cuda);
         if (candidate->GetInputCount() != 1 || candidate->GetOutputCount() != 1)
             throw std::runtime_error("PiDiNet requires one BGR input and one edge output");
         Ort::AllocatorWithDefaultOptions allocator;
@@ -49,6 +65,20 @@ bool OnnxPidiNetProcessor::load(const std::string &path)
             (out_shape[0] != 1 && out_shape[0] != -1) ||
             out_shape[1] != 1)
             throw std::runtime_error("Expected PiDiNet [1,1,H,W] float32 output");
+        const char* io=std::getenv("SIGHT_PIDINET_CUDA_IO");
+        const bool force_device=io&&std::string_view(io)=="device";
+#ifdef SIGHT_WITH_CUDA_EDGE_IO
+        const bool cuda=provider&&std::string_view(provider).find("CUDA")!=std::string_view::npos;
+        if(force_device&&!cuda)throw std::runtime_error("Device edge I/O requires CUDA provider");
+        // Single-map PiDiNet benefits less from device-side conversion.
+        // Keep the measured faster default until further qualification.
+        if(cuda&&force_device){
+            auto device=std::make_unique<EdgeDeviceIO>(true);device->init();
+            device_io_=std::move(device);
+        }
+#else
+        if(force_device)throw std::runtime_error("Device edge I/O unavailable in this build");
+#endif
         session_ = std::move(candidate);
         return true;
     } catch (const std::exception &error) {
@@ -68,6 +98,9 @@ bool OnnxPidiNetProcessor::estimate(const uint8_t *bgr,
         return false;
     }
     try {
+#ifdef SIGHT_WITH_CUDA_EDGE_IO
+        if(device_io_){device_io_->run(*session_,bgr,w,h,safe,gray);return true;}
+#endif
         const size_t pixels = size_t(w) * h;
         static constexpr float mean[3] = {0.f, 0.f, 0.f};
         static constexpr float stddev[3] = {1.f, 1.f, 1.f};

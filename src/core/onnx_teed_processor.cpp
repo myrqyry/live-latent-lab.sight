@@ -10,9 +10,23 @@
 #include <cmath>
 #include <stdexcept>
 
+#ifdef SIGHT_WITH_CUDA_EDGE_IO
+#include "edge-cuda-io.hpp"
+#endif
 namespace lll {
+OnnxTeedProcessor::OnnxTeedProcessor()=default;
+OnnxTeedProcessor::~OnnxTeedProcessor()=default;
+EdgeTensorIOStats OnnxTeedProcessor::tensor_io_stats() const {
+#ifdef SIGHT_WITH_CUDA_EDGE_IO
+    if(device_io_)return device_io_->stats;
+#endif
+    return {};
+}
 bool OnnxTeedProcessor::load(const std::string &path)
 {
+#ifdef SIGHT_WITH_CUDA_EDGE_IO
+    device_io_.reset();
+#endif
     session_.reset();
     last_error_.clear();
     input_.clear();
@@ -25,7 +39,10 @@ bool OnnxTeedProcessor::load(const std::string &path)
         options.SetIntraOpNumThreads(2);
         options.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
         options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-        auto candidate = open_onnx_session(environment_, path.c_str(), options);
+        const char* request=std::getenv("SIGHT_ONNX_DEVICE");
+        const char* provider=nullptr;
+        const bool require_cuda=request&&std::string_view(request)=="cuda";
+        auto candidate=open_onnx_session(environment_,path.c_str(),options,true,&provider,require_cuda);
         if (candidate->GetInputCount() != 1 || candidate->GetOutputCount() != 4)
             throw std::runtime_error("Expected TEED one RGB input and four edge outputs");
         Ort::AllocatorWithDefaultOptions allocator;
@@ -52,6 +69,19 @@ bool OnnxTeedProcessor::load(const std::string &path)
                 shape[1] != 1)
                 throw std::runtime_error("TEED edge outputs must be [1,1,H,W] float32");
         }
+        const char* io=std::getenv("SIGHT_TEED_CUDA_IO");
+        const bool force_device=io&&std::string_view(io)=="device";
+#ifdef SIGHT_WITH_CUDA_EDGE_IO
+        const bool host=io&&std::string_view(io)=="host";
+        const bool cuda=provider&&std::string_view(provider).find("CUDA")!=std::string_view::npos;
+        if(force_device&&!cuda)throw std::runtime_error("Device edge I/O requires CUDA provider");
+        if(cuda&&!host){
+            auto device=std::make_unique<EdgeDeviceIO>(false);device->init();
+            device_io_=std::move(device);
+        }
+#else
+        if(force_device)throw std::runtime_error("Device edge I/O unavailable in this build");
+#endif
         session_ = std::move(candidate);
         return true;
     } catch (const std::exception &error) {
@@ -71,6 +101,9 @@ bool OnnxTeedProcessor::estimate(const uint8_t *rgb,
         return false;
     }
     try {
+#ifdef SIGHT_WITH_CUDA_EDGE_IO
+        if(device_io_){device_io_->run(*session_,rgb,w,h,safe_steps,gray);return true;}
+#endif
         const size_t pixels = size_t(w) * h;
         static constexpr float mean[] = {0.f, 0.f, 0.f};
         static constexpr float stddev[] = {1.f, 1.f, 1.f};

@@ -261,3 +261,46 @@ off passthrough. The normal CPU build passed 57 model-free tests and
 the original HED reference hashes. Existing CPU capture, final edge
 map download, scribble NMS and texture upload remain. No guarantee of
 end-to-end FPS improvement or qualification on other platforms.
+
+## TEED and PiDiNet device tensor I/O (2026-11-28)
+
+Optional Linux flag `SIGHT_ENABLE_CUDA_EDGE_IO` defaults to the HED
+CUDA I/O build flag. Both processors share a worker-owned device I/O
+adapter, preallocated CUDA tensors, pinned compact input and embedded
+PTX. TEED preserves its raw RGB CHW input, four full-size logit maps,
+float averaging, double sigmoid and configurable safe steps. PiDiNet
+preserves its BGR ordering, /255 float conversion, probability output
+and safe-step quantization. Both download only a compact edge map
+plus a four-byte validity flag. Explicit CUDA selection requires the
+provider, not CPU fallback. Nonfinite output rejects publication.
+The C++ device kernels retain the original numeric behavior; CPU
+and optional Rust paths remain in place.
+
+TEED selects device I/O automatically when built and using CUDA;
+`SIGHT_TEED_CUDA_IO=host` restores original tensor transfer.
+PiDiNet remains on its original tensor transfer by default because
+the measured latency advantage is inconsistent; explicitly set
+`SIGHT_PIDINET_CUDA_IO=device` to use the new adapter. Both processors
+reject required device mode when CUDA/build support is unavailable.
+
+Same-provider actual model benchmarks, RTX 2070 SUPER, ORT 1.30.0:
+eight timed iterations following three warmups per geometry.
+First run, host -> device medians (ms):
+TEED 192x128 0.902 -> 0.646; 320x192 1.870 -> 1.498;
+512x320 5.388 -> 3.566.
+PiDiNet 192x128 3.274 -> 3.549; 320x192 7.007 -> 7.612;
+512x320 19.406 -> 19.401.
+Second run: TEED 1.364 -> 0.563, 1.870 -> 1.632, 5.280 -> 3.957;
+PiDiNet 3.809 -> 3.239, 7.525 -> 7.541, 18.788 -> 17.584.
+Soft and safe maps byte-identical across both runs and all sizes.
+Nominal tensor-boundary payload 28N (TEED) or 16N (PiDiNet) reduced
+to 4N+4 bytes; approximately 86% or 75% respectively, not measured
+PCIe traffic. Reuse, resize, reload, invalid dimensions and CPU/device
+conflict passed, including the different default policies.
+Actual forced-device OBS Preprocessors passed TEED/PiDiNet rendering,
+safe and scribble variants, mode switching, stable instrumented
+pixel capacity and off passthrough. Normal CPU build 57/57 required
+tests, original TEED and PiDiNet reference fingerprints retained.
+Capture, CPU scribble NMS and texture upload remain; no guarantee
+of frame-rate improvement, simultaneous GPU contention performance,
+Rust-enabled CUDA parity or other platform qualification.
