@@ -12,21 +12,18 @@
 #include <vector>
 #include "core/dense_motion.hpp"
 #include "core/camera_stabilizer.hpp"
+#include "core/flow_capture_buffer.hpp"
+#include <utility>
 namespace {
 using Clock=std::chrono::steady_clock;
 std::atomic<uint64_t> next_sequence{0};
-struct Frame {
-    std::vector<uint8_t> rgba;
-    unsigned w=0,h=0,sw=0,sh=0;
-    uint64_t revision=0;
-    Clock::time_point captured{};
-};
+using Frame=sight::FlowCaptureFrame;
 struct Filter {
     obs_source_t* context=nullptr;
     std::mutex mutex;
     std::condition_variable cv;
     std::thread worker;
-    Frame frame;
+    Frame frame,render_scratch;
     sight_flow_v1 published{};
     sight::CameraCorrection published_correction{},render_correction{};
     Clock::time_point render_correction_time{};
@@ -50,20 +47,19 @@ struct Filter {
 void worker(Filter* f) {
     sight::DenseMotion engine;
     sight::CameraStabilizer stabilizer;
-    cv::Mat previous;
-    Frame metadata;
+    cv::Mat previous,gray;
+    Frame metadata,frame;
     for(;;) {
-        Frame frame;
         int mode=0,smooth=500,crop=6;
         {
             std::unique_lock lock(f->mutex);
             f->cv.wait(lock,[&]{return f->stopping||f->pending;});
             if(f->stopping)return;
-            frame=std::move(f->frame);f->pending=false;
+            std::swap(frame,f->frame);f->pending=false;
             mode=f->view.load();smooth=f->smoothing_ms.load();crop=f->crop_percent.load();
         }
         sight_flow_v1 result{};
-        cv::Mat gray(int(frame.h),int(frame.w),CV_8U);
+        gray.create(int(frame.h),int(frame.w),CV_8U);
         for(size_t i=0;i<gray.total();++i) {
             const auto* p=frame.rgba.data()+i*4;
             gray.data[i]=uint8_t((77u*p[0]+150u*p[1]+29u*p[2]+128u)>>8);
@@ -80,7 +76,7 @@ void worker(Filter* f) {
         if(result.sequence&&mode==3)
             correction=stabilizer.step(result,frame.w,frame.h,smooth/1000.f,crop/100.f);
         else stabilizer.reset();
-        previous=std::move(gray);
+        std::swap(previous,gray);
         metadata.w=frame.w;metadata.h=frame.h;metadata.sw=frame.sw;metadata.sh=frame.sh;
         metadata.revision=frame.revision;metadata.captured=frame.captured;
         {
@@ -93,6 +89,9 @@ void worker(Filter* f) {
                 f->published=result;f->published_correction=correction;
                 f->published_time=frame.captured;f->published_revision=frame.revision;
             }
+            // Return the finished allocation before requesting another
+            // capture. A pending frame, if any, must never be overwritten.
+            if(!f->pending)std::swap(frame,f->frame);
             f->wants=true;
         }
     }
@@ -197,16 +196,12 @@ void render(void* data,gs_effect_t*) {
         if(f->stage_revision==rev&&f->sw==w&&f->sh==h) {
             uint8_t* bytes=nullptr;uint32_t pitch=0;
             if(gs_stagesurface_map(f->stage,&bytes,&pitch)) {
-                if(pitch>=f->cw*4) {
-                    Frame frame;
-                    frame.w=f->cw;frame.h=f->ch;frame.sw=w;frame.sh=h;
-                    frame.revision=rev;frame.captured=f->captured;
-                    frame.rgba.resize(size_t(f->cw)*f->ch*4);
-                    for(unsigned y=0;y<f->ch;++y)
-                        std::memcpy(frame.rgba.data()+size_t(y)*f->cw*4,bytes+size_t(y)*pitch,size_t(f->cw)*4);
+                auto& frame=f->render_scratch;
+                if(frame.copy_rgba(bytes,pitch,f->cw,f->ch)) {
+                    frame.sw=w;frame.sh=h;frame.revision=rev;frame.captured=f->captured;
                     std::unique_lock lock(f->mutex,std::try_to_lock);
                     if(lock&&f->revision==rev&&!f->pending) {
-                        f->frame=std::move(frame);f->pending=true;submitted=true;f->cv.notify_one();
+                        std::swap(f->frame,frame);f->pending=true;submitted=true;f->cv.notify_one();
                     }
                 }
                 gs_stagesurface_unmap(f->stage);
@@ -286,7 +281,7 @@ void render(void* data,gs_effect_t*) {
     f->render_correction={};
     if(valid&&!f->announced) {
         f->announced=true;
-        blog(LOG_INFO,"[Sight/Flow] SIGHT_DENSE_FLOW_20261117: DIS bidirectional grid");
+        blog(LOG_INFO,"[Sight/Flow] SIGHT_DENSE_FLOW_20261117: DIS bidirectional grid; SIGHT_FLOW_REUSE_20261127");
     }
     if(!valid||f->view==0||!f->effect){obs_source_skip_video_filter(f->context);return;}
     if(result.sequence!=f->uploaded_sequence) {

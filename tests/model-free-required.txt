@@ -44,3 +44,4 @@ sight_dense_motion_unit
 sight_camera_stabilizer_unit
 sight_native_ort_utf8
 sight_tasks_platform_policy
+sight_flow_capture_buffer_unit

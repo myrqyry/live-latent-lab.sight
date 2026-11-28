@@ -38,6 +38,7 @@ if grep -Eq "Parameter '(camera_offset|camera_margin)' set to invalid size" "$wo
     exit 1
 fi
 grep -Fq 'SIGHT_DENSE_FLOW_20261117' "$work/log"
+grep -Fq 'SIGHT_FLOW_REUSE_20261127' "$work/log"
 grep -Fq 'SIGHT_CAUSAL_STABILIZER_20261117' "$work/log"
 if [[ $# == 5 ]]; then
     grep -Fq 'SIGHT_FLOW_BRIDGE_20261117' "$work/log"

@@ -2,7 +2,7 @@
 
 The shared OBS32.2.0/33.0.3 qualification matrix uses obs-plugin-ci e9eb704.
 The bootstrap reads its literal immutable pin from the workflow.
-All 46 required Linux model-free cases must appear once in the report and pass,
+All 47 required Linux model-free cases must appear once in the report and pass,
 even with Python optimization enabled. Extra tests are also required to pass.
 
 Private repository Actions artifacts are enabled for development testing.

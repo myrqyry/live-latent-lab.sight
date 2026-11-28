@@ -1500,6 +1500,9 @@ if(SIGHT_HAVE_OCR AND SIGHT_OCR_TESSDATA_DIR AND
 endif()
 
 if(SIGHT_HAVE_DENSE_FLOW)
+    add_executable(sight_flow_capture_buffer_test tests/flow_capture_buffer_test.cpp)
+    target_include_directories(sight_flow_capture_buffer_test PRIVATE src)
+    add_test(NAME sight_flow_capture_buffer_unit COMMAND sight_flow_capture_buffer_test)
     add_executable(sight_dense_motion_test tests/dense_motion_test.cpp src/core/dense_motion.cpp)
     target_include_directories(sight_dense_motion_test PRIVATE src)
     target_include_directories(sight_dense_motion_test SYSTEM PRIVATE ${OpenCV_INCLUDE_DIRS})

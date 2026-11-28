@@ -13,6 +13,6 @@ jobs:
       module: live-latent-lab-sight
       profile: full
       driver: caller
-      minimum-tests: 46
+      minimum-tests: 47
       source-package: false
       upload-artifacts: ${{ github.event.repository.private == true }}
