@@ -139,8 +139,8 @@ ctest --test-dir build-public --output-on-failure
 cmake --install build-public --prefix "$PWD/stage"
 ```
 
-Tests with actual inference require explicit model/runtime/fixture paths;
-a reduced model-free test matrix does not qualify all tracking modes.
+See the [test guide](tests/README.md) for real-inference model, runtime, and
+fixture setup. A model-free test matrix does not qualify all tracking modes.
 Do not install into an active OBS process. No separately acquired model files are shipped. The vendored BSD
 libfacedetection implementation includes its embedded CNN arrays.
 
@@ -162,11 +162,7 @@ cmake --build build-public --parallel 4
 
 Select the corresponding compatible model files in OBS. Real GPU acceptance
 requires the RTMW and YOLOX model files plus the MediaPipe tracking fixtures.
-The earlier expanded Linux configuration passed all 92 configured CTest
-checks and real hypershader integration. The latest curated integration
-completed 114 of 115 tests on the first run; the corrected VRM easing
-assertion passed on a targeted rebuild. See the release status for scope.
-See [release status](RELEASE_STATUS.md) for exact evidence and limitations.
+See [release status](RELEASE_STATUS.md) for qualification evidence and limitations.
 
 ## Release gate
 

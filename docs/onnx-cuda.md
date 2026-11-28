@@ -16,7 +16,9 @@ all operators execute on GPU. Changing the setting rebuilds the session
 on the existing worker without changing the model file or other sources.
 Use FP32 models for CPU; the locally qualified FP16 conversions have
 only been validated on CUDA. See [cutout precision](cutout-precision.md).
-Other ONNX filters retain their existing selection behavior.
+Provider selection is separate from texture and tensor transfers. See the
+[CUDA texture and tensor I/O guide](cuda-texture-interop.md) for opt-in
+build flags, runtime selectors, and the concurrent-effects test.
 
 
 Use a separate build directory with a Linux ONNX Runtime GPU distribution

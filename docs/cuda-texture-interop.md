@@ -18,6 +18,9 @@ independently.
 
 - The OBS graphics thread draws into a reusable RGBA texture, inserts
   an OpenGL fence and checks it later with a zero-timeout poll.
+  Once the texture is unmapped, graphics can prepare one next capture
+  while inference uses the separate linear device buffer. Mapping that
+  capture still requires the single inference/result slot to be free.
 - The capture and output texture registrations persist at a stable
   resolution. A CUDA device-to-device copy transfers the ready input
   into an owned device buffer; mapped graphics arrays never outlive
@@ -94,11 +97,11 @@ Actual integrated OBS hardware qualification:
   staging passed with 20 files including PTX; vendor runtime
   dependencies remain external.
 
-These results concern the existing Portrait Sketch model only.
-Further filters, other GPUs, Windows D3D11 interop, macOS, high
-resolutions, multiple simultaneous effects and device-loss recovery
-remain unqualified. The optional Linux build is not a public
-redistribution approval or installed live plugin.
+These results concern the existing Portrait Sketch model only. See the
+[concurrent CUDA test](#concurrent-cuda-effects-and-sketch-capture-overlap-2026-11-28)
+below for six-source coverage. Other GPUs, Windows D3D11 interop, macOS,
+high resolutions and device-loss recovery are outside these results.
+Local Linux qualification does not establish redistribution approval.
 
 ## Subject Cutout: reuse without changing the matte contract
 
@@ -345,8 +348,9 @@ shared ABI snapshots against the earlier qualified implementation.
 Longpipe actual flow model passed motion, off/on, restored position
 and shared matte ABI, with 36 completed frames and stable capacity.
 Normal CPU build passed all 57 required model-free tests.
-Opt-in retained pending larger model variants, contention and
-cross-platform testing. Existing capture readback, CPU history,
+Device mode remains opt-in. The concurrent test below covers U2NetP;
+larger model variants, broader contention, and cross-platform testing
+remain outside that coverage. Existing capture readback, CPU history,
 Longpipe flow and final matte upload remain. No installation/push.
 
 ## Concurrent CUDA effects and Sketch capture overlap (2026-11-28)
@@ -362,29 +366,47 @@ Measure completions/uploads, render-cycle latency and scheduled
 deadline misses. The test checks per-effect progress, Preprocessors
 failures/uploads, and Sketch device-path failures/readbacks.
 
-With all optional CUDA I/O build flags enabled, build and stage:
+Use the validated Linux build with OpenCV development files and native
+Preprocessors enabled. Configure against a matched CUDA ONNX Runtime SDK
+with the OpenGL and CUDA Toolkit build dependencies described above:
+
 ```sh
+cmake -S . -B build-cuda -G Ninja -DCMAKE_BUILD_TYPE=Release \
+  -DSIGHT_ORT_ROOT=/absolute/path/to/matched/ort-gpu-sdk \
+  -DSIGHT_ENABLE_PREPROCESSORS=ON \
+  -DSIGHT_ENABLE_CUDA_TEXTURE_INTEROP=ON \
+  -DSIGHT_ENABLE_CUDA_DEPTH_IO=ON \
+  -DSIGHT_ENABLE_CUDA_HED_IO=ON \
+  -DSIGHT_ENABLE_CUDA_EDGE_IO=ON \
+  -DSIGHT_ENABLE_CUDA_CUTOUT_IO=ON
 cmake --build build-cuda --target live-latent-lab-sight sight_concurrent_cuda_obs_test
 cmake --install build-cuda --prefix /absolute/path/to/isolated-stage
 ```
-Run on the actual NVIDIA desktop, not Xvfb. Use matched external CUDA
-and cuDNN libraries in LD_LIBRARY_PATH and an isolated HOME/XDG config
-(with the real display authorization preserved). Supply the staged
-module, data, host or device mode, and six local model files in this order:
+This executable is a manual test, not a CTest entry. Run on the actual
+NVIDIA desktop, not Xvfb, with the real display authorization preserved.
+Use matched external CUDA and cuDNN libraries and an isolated home. Supply
+the staged module, data, mode, and six local models in this order:
+
 ```sh
-build-cuda/sight_concurrent_cuda_obs_test \
+test_home=$(mktemp -d)
+XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}" \
+  HOME="$test_home" XDG_CONFIG_HOME="$test_home/config" \
+  LD_LIBRARY_PATH=/absolute/path/to/cuda13/lib:/absolute/path/to/cudnn/lib \
+  build-cuda/sight_concurrent_cuda_obs_test \
   /absolute/path/to/isolated-stage/bin/64bit/live-latent-lab-sight.so \
   /absolute/path/to/isolated-stage/data device \
   /path/to/animegan_v3_portrait.onnx /path/to/depth_anything_v2_small_fp32.onnx \
   /path/to/u2netp.onnx /path/to/ControlNetHED.onnx \
   /path/to/teed_7_model.onnx /path/to/table5_pidinet.onnx
 ```
-Host mode uses staged tensor transfers with CUDA inference; device
-mode forces all optional device paths, including PiDiNet and Cutout.
-For an explicitly hardware-specific throughput check, set
-SIGHT_CONCURRENT_MIN_SKETCH to a minimum number of completed Sketch
-uploads during the measured interval. No hardware-specific throughput
-threshold is enabled by default.
+Use `host` for the staged transfer baseline. It requests CUDA inference;
+check the session logs before treating the baseline as all-CUDA. `device`
+selects the optional device paths, including PiDiNet and Cutout. Both modes
+require each effect to report at least `rounds / 9` completions or uploads
+during the measured interval (integer division). Deadline misses are
+reported, not a pass/fail condition. In `device` mode, set
+`SIGHT_CONCURRENT_MIN_SKETCH` for an additional hardware-specific minimum
+number of Sketch uploads; this threshold is unset by default.
 
 The initial test identified a deterministic Sketch scheduling limit:
 a new GL capture was only started after the previous result had

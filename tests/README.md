@@ -1,53 +1,51 @@
 # Tests
 
-The default build contains real PortraitSketch, U²-Net, Depth Anything,
-MediaPipe Tasks, and Privacy V2 inference plus OBS graphics
-smoke tests. The experimental full build also contains the older LiteRT, Stable
-Diffusion and other processor tests.
+The validated Linux build registers model-free checks and conditionally
+registers real-model and OBS graphics tests. The experimental full build
+contains the older LiteRT, Stable Diffusion and other processor tests.
 
 ## Default validated-effects tests
 
-Configure with the model paths below to enable each effect group's
-regression checks; tests register only when their models, fixtures, and the
-pinned MediaPipe runtime are present. The OBS smoke runs through the actual
-plugin with an OpenGL context provided by `xvfb-run`, checks that **exactly
-the verified Sight filter set is registered** (Portrait Sketch, Subject
-Cutout, Depth Camera, Tracking, Privacy V2,
-Tracking Signal Receiver, Value Router) and the output video differs from
-the input. See the main `README.md` for the full flag list.
+Follow the [Linux build prerequisites](../README.md#build-and-verify), then
+supply the model paths below to enable the Portrait Sketch and U²-Net checks.
+Other cases have their own model, fixture and runtime requirements; see
+[`cmake/validated_effects.cmake`](../cmake/validated_effects.cmake) for the
+registration conditions. Use `ctest -N` to see what a build will run.
+
+The [OBS render smoke](obs_sight_render_smoke.cpp) loads the built module
+under `xvfb-run`, checks expected filter IDs and display names, and verifies
+rendered output according to the case (effect output or passthrough). The
+expected filter set depends on the build; see
+[`src/plugin-main.cpp`](../src/plugin-main.cpp) for registrations. Native VRM
+is a source, with its own `sight_native_vrm_obs_render` test.
 
 ```bash
-cmake -S . -B build-verified \
+cmake -S . -B build-verified -DCMAKE_BUILD_TYPE=Release \
   -DSIGHT_ANIMEGAN_MODEL=/absolute/path/to/animegan_v3_portrait.onnx \
   -DSIGHT_U2NET_MODEL=/absolute/path/to/u2net.onnx
 cmake --build build-verified
+ctest --test-dir build-verified -N
 ctest --test-dir build-verified --output-on-failure
 ```
 
-ONNX models are not bundled. The MediaPipe/Privacy OBS tests additionally need
-real-image fixtures — a 512x512 face picture (`SIGHT_MEDIAPIPE_TEST_IMAGE`,
-PNG/JPG) and the same picture as raw 512x512 RGBA
-(`SIGHT_MEDIAPIPE_TEST_RGBA`) — kept outside the repository, for example under
-`~/.cache/sight-test-fixtures/`. The privacy reference is a licensed public
-portrait (pixabay girl-2704869, cropped to square) converted on 2026-10-27;
-the pinned detector requires a *real* face, so synthetic or gradient images
-are rejected by design. The Privacy V2 OBS integration test also
-requires OBS's image-source module. CMake checks common Linux plugin
-locations; use -DSIGHT_IMAGE_SOURCE_MODULE=/path/to/image-source.so to
-override. The runner uses the built module's runtime instead of an installed
-Sight copy. The tests cover square, landscape, portrait,
-and misaligned sizes. A U²-Net mask test validates real segmentation and
-confirms a nonconstant alpha channel on a local subject image. The tests fail
-on ONNX broadcasting or OpenGL shader errors
-rather than merely checking a changed pixel count. If the system has OBS's
-`image-source` module, an additional test generates a temporary BMP and
-runs the filter on that real OBS source type. The tests exercise CPU inference
-and capture/render callbacks under software OpenGL; they do not measure
-real-time FPS on the user's active GPU or camera.
+ONNX models are not bundled. Keep real-image fixtures outside the repository.
+MediaPipe cases take the matching runtime, model paths, and case-specific
+fixtures such as `SIGHT_MEDIAPIPE_TEST_IMAGE` (512×512 PNG/JPG) or
+`SIGHT_MEDIAPIPE_TEST_RGBA` (raw 512×512 RGBA). The Privacy V2 integration
+uses the raw RGBA face fixture and `SIGHT_MEDIAPIPE_FACE_MODEL`; it also
+requires OBS's `image-source` module. CMake checks common Linux plugin
+locations; override with `-DSIGHT_IMAGE_SOURCE_MODULE=/path/to/image-source.so`.
+The original privacy reference fixture used a licensed public portrait
+(Pixabay girl-2704869), cropped to square and converted on 2026-10-27.
+
+The render runner loads the built Sight module and rejects known ONNX or
+OpenGL errors even if pixels change. These checks do not measure live OBS
+preview FPS or webcam performance.
 
 ## Experimental LiteRT tests
 
-Run the focused LiteRT suite with:
+In a build configured with `SIGHT_ENABLE_UNVERIFIED_EFFECTS=ON` and its
+legacy SDK dependencies, run the focused LiteRT suite with:
 
 ```bash
 ctest --test-dir build -R 'litert_' --output-on-failure
@@ -76,22 +74,18 @@ evidence that graphics callbacks are safe.
 
 ## AnimeGANv3 real-model smoke test
 
-This checks the existing Anime Style mode with a real ONNX model, rather than
-mocking the inference path. The supplied model must have float32 NHWC inputs
-and outputs. The script compiles `src/core/enhancement_processor.cpp` against
-an existing ONNX Runtime C++ SDK and runs a 128 x 128 RGB frame through it.
+With `SIGHT_ANIMEGAN_MODEL` configured and the validated build compiled,
+run the processor test and the Portrait Sketch OBS cases with:
 
 ```bash
-ORT_ROOT=/path/to/onnxruntime \
-  tests/run_animegan_inference.sh /path/to/animegan_v3_portrait.onnx
+ctest --test-dir build-verified -R '^sight_animegan_(real_inference|obs_.*)$' --output-on-failure
 ```
 
-It requires the ONNX Runtime `include/` and `lib/` directories. No model is
-bundled with the test. Passing means the model loaded, produced a correctly
-sized tensor, and changed actual pixel values. The separate
-`sight_animegan_obs_render` test verifies plugin loading, filter registration,
-and real OBS texture rendering. Neither test establishes live FPS on a user
-camera or GPU acceleration.
+The processor test runs a 128×128 RGB frame through a real float32 NHWC ONNX
+model and checks that the output differs from the input. The `sight_animegan_obs_*`
+cases exercise the registered Portrait Sketch filter and real OBS texture
+rendering, including square, landscape, portrait, and misaligned sizes. They
+do not establish live FPS on a user camera or GPU acceleration.
 
 ## U²-Net Subject Cutout
 
@@ -101,18 +95,22 @@ first 1×1×320×320 fused mask output. The OBS test registers the real
 errors. An input with no recognizable foreground can validly yield an
 all-transparent matte; do not require synthetic gradients to have a subject.
 
-To additionally test alpha variation on a local subject image with
-dimensions 750×1000, configure `SIGHT_U2NET_TEST_IMAGE` with its absolute
-path. This is a **test-only** option; no user image is committed.
+To enable `sight_u2net_obs_subject`, configure `SIGHT_U2NET_TEST_IMAGE` with
+the absolute path to a local 750×1000 subject image. The test requires OBS's
+`image-source` module; its separate override is `SIGHT_U2NET_IMAGE_MODULE`.
+This fixture is for tests only; keep it outside the repository.
+
+For optional CUDA-bound matte tests and their model requirements, see the
+[CUDA texture and tensor I/O guide](../docs/cuda-texture-interop.md).
 
 ## U²-Net performance diagnostic
 
-The U²-Net filter uses up to six physical-core-equivalent ONNX CPU threads
-when available, leaving other cores for OBS. Its graphics thread only captures
-another frame after an inference finishes; previous results continue to
-render normally while the worker is busy.
+The U²-Net processor sets ONNX intra-op threads to half the reported logical
+CPU count, rounded down and clamped to 1–6. The graphics thread captures when
+the worker requests a frame; previous results can render while the worker
+is busy.
 
-When eight masks have finished, OBS logs an actual rolling inference average
+When eight masks have finished, OBS logs the first-eight inference average
 and throughput, for example
 `[Sight/U2Net] Inference average: ... ms/frame (... inference fps, first 8 frames)`.
 
