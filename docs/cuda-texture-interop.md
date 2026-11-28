@@ -348,3 +348,78 @@ Normal CPU build passed all 57 required model-free tests.
 Opt-in retained pending larger model variants, contention and
 cross-platform testing. Existing capture readback, CPU history,
 Longpipe flow and final matte upload remain. No installation/push.
+
+## Concurrent CUDA effects and Sketch capture overlap (2026-11-28)
+
+The manual hardware gate `sight_concurrent_cuda_obs_test` runs six
+independent filtered synthetic OBS inputs in one process on a real
+NVIDIA OpenGL display. The filter IDs exercise Portrait Sketch, Depth
+Camera, Subject Cutout (U2NetP), HED, TEED and PiDiNet. Each render cycle
+draws all six sources into a reused render target, with no test-side
+pixel readback in the timed loop. Warm up all workers, then schedule
+180 cycles at 30 Hz (or 180--1800 via SIGHT_CONCURRENT_ROUNDS).
+Measure completions/uploads, render-cycle latency and scheduled
+deadline misses. The test checks per-effect progress, Preprocessors
+failures/uploads, and Sketch device-path failures/readbacks.
+
+With all optional CUDA I/O build flags enabled, build and stage:
+```sh
+cmake --build build-cuda --target live-latent-lab-sight sight_concurrent_cuda_obs_test
+cmake --install build-cuda --prefix /absolute/path/to/isolated-stage
+```
+Run on the actual NVIDIA desktop, not Xvfb. Use matched external CUDA
+and cuDNN libraries in LD_LIBRARY_PATH and an isolated HOME/XDG config
+(with the real display authorization preserved). Supply the staged
+module, data, host or device mode, and six local model files in this order:
+```sh
+build-cuda/sight_concurrent_cuda_obs_test \
+  /absolute/path/to/isolated-stage/bin/64bit/live-latent-lab-sight.so \
+  /absolute/path/to/isolated-stage/data device \
+  /path/to/animegan_v3_portrait.onnx /path/to/depth_anything_v2_small_fp32.onnx \
+  /path/to/u2netp.onnx /path/to/ControlNetHED.onnx \
+  /path/to/teed_7_model.onnx /path/to/table5_pidinet.onnx
+```
+Host mode uses staged tensor transfers with CUDA inference; device
+mode forces all optional device paths, including PiDiNet and Cutout.
+For an explicitly hardware-specific throughput check, set
+SIGHT_CONCURRENT_MIN_SKETCH to a minimum number of completed Sketch
+uploads during the measured interval. No hardware-specific throughput
+threshold is enabled by default.
+
+The initial test identified a deterministic Sketch scheduling limit:
+a new GL capture was only started after the previous result had
+been uploaded, so the non-waiting fence poll delayed every other
+inference. After copying/unmapping the input texture, prepare one
+next GL image while the worker owns its separate linear CUDA buffer.
+The graphics-side pending fence bounds prefetch to one image;
+mapping again still requires the single inference/result slot to be
+free. No extra inference queue, texture registration or worker wait.
+Settings/geometry generations still invalidate old output and fences.
+
+Actual RTX 2070 SUPER, six 320x192 sources, Sketch edge 256 and
+Depth edge 252, default depth cadence four. Six-second baseline:
+host mode sketch 180, depth 45, cutout 177, HED 178, TEED 178,
+PiDiNet 176 completions; render median 10.776 ms, p95 13.753 ms,
+max 25.774 ms. Initial all-device mode sketch 90, depth 45, cutout
+141, HED 148, TEED 149, PiDiNet 144; median 9.963 ms, p95 13.636 ms,
+max 14.558 ms. Both zero deadline misses. Device mode did not
+universally improve model throughput under contention.
+
+A separate required-120-Sketch-output six-second regression failed
+before the capture overlap (90 uploads) and passed after (179).
+After: depth 45, cutout 156, HED/TEED/PiDiNet 160 each, median
+10.013 ms, p95 12.705 ms, max 13.765 ms, no missed deadlines.
+Extended 900-cycle, 30-second device test: Sketch 898, depth 225,
+cutout 775, HED 802, TEED 801, PiDiNet 801. Median 10.145 ms,
+p95 13.101 ms, max 15.438 ms, zero missed deadlines. Device-wide
+memory peaked at 3099 MiB across 64 samples (includes unrelated
+desktop processes; 1794 MiB before, 1680 MiB after). The existing
+Sketch GPU regression also passed resident/resize/live-switch
+checks with zero GPU-mode readbacks, one model load on resize,
+and max pixel difference 1 versus staged. CPU required tests 57/57.
+
+This is a synthetic six-source render test, not a complete OBS
+scene/encoder/stream or a hard real-time guarantee. GPU usage varies
+with other processes; multiple large models, long-duration soak,
+device loss, other platforms, shared runtime resource consolidation
+and removal of remaining staging transfers still need work.

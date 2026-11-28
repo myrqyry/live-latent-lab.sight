@@ -408,3 +408,23 @@ passed. CPU suite 57/57. Logical payload 4N+4 vs 16M, source/model
 geometry dependent. Host capture/history/flow/ABI/final upload
 remain; broader model variants and sustained GPU contention not
 qualified. No install or push.
+
+## Concurrent CUDA qualification and Sketch overlap (2026-11-28)
+
+Added manual six-source real-display OBS hardware contention test
+for Sketch, Depth, U2NetP, HED, TEED and PiDiNet, with host/device
+comparisons and optional measured Sketch throughput acceptance.
+Found a half-rate Sketch GPU fence scheduling limit; prefetch one
+GL texture after unmapping the previous capture, overlapping the
+single worker without an extra inference queue. Six-second red
+90 -> green 179 Sketch uploads, zero scheduled render deadline
+misses. Extended 900 cycles/30 s passed: Sketch 898, depth 225
+(default cadence four), Cutout 775, HED 802, TEED 801, PiDiNet 801;
+median/p95/max six-source render cycle 10.145/13.101/15.438 ms,
+zero deadline misses. Device-wide peak 3099 MiB (not plugin-only).
+Original host path was faster for some model update rates under
+contention; no universal GPU mode performance claim or default
+policy change. Sketch resident/resize/switch hardware tests passed;
+57/57 model-free suite. Synthetic independent sources, no live
+capture/encode/stream or extended soak qualification. Shared CUDA
+resource consolidation remains separate pending work. No install/push.

@@ -1820,3 +1820,11 @@ if(SIGHT_ENABLE_CUDA_CUTOUT_IO)
     endforeach()
 
 endif()
+
+# Manual real-display contention gate. No model assets are downloaded.
+if(SIGHT_ENABLE_CUDA_TEXTURE_INTEROP AND SIGHT_ENABLE_CUDA_DEPTH_IO AND
+   SIGHT_ENABLE_CUDA_HED_IO AND SIGHT_ENABLE_CUDA_EDGE_IO AND SIGHT_ENABLE_CUDA_CUTOUT_IO)
+    add_executable(sight_concurrent_cuda_obs_test tests/verify-concurrent-cuda-obs.cpp)
+    target_include_directories(sight_concurrent_cuda_obs_test PRIVATE "${SIGHT_OBS_INCLUDE}")
+    target_link_libraries(sight_concurrent_cuda_obs_test PRIVATE "${SIGHT_OBS_LIBRARY}")
+endif()

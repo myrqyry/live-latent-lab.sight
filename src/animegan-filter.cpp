@@ -648,6 +648,11 @@ void render_gpu(AnimeGanFilter* f,obs_source_t* target,uint32_t width,uint32_t h
                             f->frame_width=pw;f->frame_height=ph;
                             f->frame_pending=f->capture_in_flight=true;
                             ++f->gpu_captures;++f->captures;notify=true;handoff_time(start);
+                            // The capture texture has been unmapped. GL may
+                            // prepare one next image while the worker owns the
+                            // separate linear CUDA buffer. Its fence is polled
+                            // later, and it is not mapped until the slot is free.
+                            want_capture=true;
                         }
                     }else want_capture=true;
                 }else ++f->skipped;
