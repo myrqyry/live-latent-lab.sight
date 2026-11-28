@@ -4,6 +4,7 @@ Native OBS Studio tools for computer vision, visual effects and signal-driven
 interactions.
 
 **Source:** [live-latent-lab.sight](https://github.com/myrqyry/live-latent-lab.sight)
+
 This public source preview is a curated, separately rooted release-candidate
 repository, not the historical development repository. There are currently
 **no GitHub releases or redistribution-cleared installers**.
@@ -53,7 +54,12 @@ Portrait Sketch reuses capture, inference and upload workspaces. Its
 render-side capture, submission and result exchange use non-waiting
 mutex attempts; busy handoffs skip a capture or retain the previous
 valid texture. Generation tags reject obsolete results. GPU readback
-and texture upload remain synchronous graphics operations. The current CUDA path also reuses device tensors for cutout mattes, Depth Anything and supported edge preprocessors (HED, TEED and PiDiNet); this is backend/model-specific and is not a claim that all rendering or inference is zero-copy.
+and texture upload remain synchronous graphics operations. The current CUDA
+path also reuses device tensors for cutout mattes, Depth Anything and supported
+edge preprocessors (HED, TEED and PiDiNet). A six-source isolated OBS stress
+probe ran 900 render cycles over 30 seconds without a missed scheduled render
+deadline on the tested GPU. This is backend/model-specific synthetic evidence,
+not universal zero-copy inference or a live streaming benchmark.
 
 Subject Cutout supports U²-Net/U²-NetP, MODNet and Longpipe, per-instance
 Auto/CPU/required CUDA selection, adaptive optional flow and bounded shared
