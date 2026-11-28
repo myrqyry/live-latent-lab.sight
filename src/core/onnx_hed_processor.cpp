@@ -114,7 +114,8 @@ bool OnnxHedProcessor::estimate(const uint8_t *rgb, uint32_t w, uint32_t h,
             if (!upsampled[i].isContinuous())
                 throw std::runtime_error("HED result has unsupported row stride");
         }
-        std::vector<uint8_t> output(pixels);
+        output_scratch_.resize(pixels);
+        auto& output=output_scratch_;
         for (size_t p = 0; p < pixels; ++p) {
             float sum = 0.f;
             for (const auto &map : upsampled) {

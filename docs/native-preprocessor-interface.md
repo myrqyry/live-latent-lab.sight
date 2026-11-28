@@ -9,13 +9,14 @@ OBS procedure registration/callback outputs.
 
 ## OBS source-specific procedures
 
-All four procedures live on each individual Sight Preprocessors filter
+All five procedures live on each individual Sight Preprocessors filter
 instance. Call through that instance's obs_source_get_proc_handler(), not
 the global OBS procedure handler. They are read-only cumulative counters.
 
 | Procedure | Output fields (all out int) | Meaning |
 | --- | --- | --- |
 | sight_preprocessor_stats_v1 | captures, completed, skipped, failed, depth_completed | Captured/processed/skipped/failed frames, successful Depth Anything V2 processing |
+| sight_preprocessor_buffer_stats_v1 | growths, uploads | Cumulative capacity growth of instrumented capture/output pixel vectors and completed texture uploads; not a global allocation counter |
 | sight_preprocessor_teed_stats_v1 | teed_completed | Successful local TEED processing |
 | sight_preprocessor_pidinet_stats_v1 | pidinet_completed | Successful local PiDiNet processing (including Scribble) |
 | sight_preprocessor_hed_stats_v1 | hed_completed | Successful local five-scale HED model processing (including Scribble HED) |

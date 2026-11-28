@@ -307,9 +307,8 @@ bool process_rgba(const uint8_t *input, int width, int height, int stride,
         cv::merge(out_channels, output);
         if (!output.isContinuous()) output = output.clone();
 
-        std::vector<uint8_t> next(output.total() * output.elemSize());
-        std::copy(output.datastart, output.dataend, next.begin());
-        result.swap(next);
+        result.resize(output.total()*output.elemSize());
+        std::copy(output.datastart,output.dataend,result.begin());
         return true;
     } catch (const cv::Exception &) {
         return false;

@@ -325,3 +325,18 @@ passed. 57 model-free tests passed. Original normalization and history
 algorithm retained. Host staging and CPU depth ABI retained; no new
 GPU-resident depth inference or end-to-end performance claim.
 No install or push.
+
+## Preprocessors reusable frame exchange (2026-11-28)
+
+Non-waiting input/output exchange, graphics-owned upload vector swapped
+from publication slot without extra full-frame copy, generation/age
+checks, worker-owned shared OpenCV and gray storage, persistent
+transactional TEED/PiDiNet/HED output buffers. Actual CPU and CUDA OBS
+tests passed four native modes and four neural modes, safe/scribble
+and mode changes. Stable counted pixel capacity per mode after warm-up,
+78 CPU/81 CUDA uploads. Repeated output exact except CUDA Depth Anything
+(max 1/255; final total absolute error 27 over 245760 bytes); narrowly
+bounded CUDA depth tolerance in the reuse test. New stats ABI documented
+and checked, 57/57 model-free cases passed, including missing-model
+passthrough. Host staging remains, no GPU-native I/O binding or measured
+end-to-end speedup. No install or push.

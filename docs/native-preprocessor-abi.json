@@ -167,6 +167,13 @@
         "depth_completed"
       ]
     },
+    "sight_preprocessor_buffer_stats_v1": {
+      "callback": "buffer_stats_proc",
+      "outputs": [
+        "growths",
+        "uploads"
+      ]
+    },
     "sight_preprocessor_teed_stats_v1": {
       "callback": "teed_stats_proc",
       "outputs": [

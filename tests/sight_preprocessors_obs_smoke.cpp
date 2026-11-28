@@ -261,6 +261,40 @@ int main(int argc, char **argv)
         obs_source_release(source);obs_shutdown(); return 1;
     }
     obs_source_filter_add(source, filter);
+    auto reuse=[&](const char* label){
+        if(!std::getenv("SIGHT_PREPROCESSORS_REUSE"))return true;
+        int64_t growths=0,uploads=0;
+        auto stats=[&]{
+            calldata_t d{};bool ok=proc_handler_call(obs_source_get_proc_handler(filter),"sight_preprocessor_buffer_stats_v1",&d);
+            growths=calldata_int(&d,"growths");uploads=calldata_int(&d,"uploads");calldata_free(&d);return ok;
+        };
+        auto advance=[&](int64_t target){
+            auto end=std::chrono::steady_clock::now()+std::chrono::seconds(15);
+            while(std::chrono::steady_clock::now()<end){
+                if(!stats())return false;
+                if(uploads>=target)return true;
+                if(!render(source,output))return false;
+                std::this_thread::sleep_for(std::chrono::milliseconds(25));
+            }
+            return false;
+        };
+        bool warm=stats()&&advance(uploads+4);auto initial=growths;
+        const auto reference=output;
+        bool continued=warm&&advance(uploads+4);
+        uint64_t error=0;unsigned max_error=0;
+        if(output.size()==reference.size())for(size_t i=0;i<output.size();++i){
+            const unsigned e=unsigned(std::abs(int(output[i])-int(reference[i])));
+            error+=e;max_error=std::max(max_error,e);
+        }
+        const char* device=std::getenv("SIGHT_ONNX_DEVICE");
+        const bool cuda_depth=device&&std::string(device)=="cuda"&&std::string(label)=="depth_anything_v2";
+        const bool same=output==reference||(cuda_depth&&output.size()==reference.size()&&
+            !output.empty()&&max_error<=1&&error<=output.size()/100);
+        bool ok=continued&&growths==initial&&initial>0&&same;
+        std::cout<<"SIGHT_PREPROCESSOR_REUSE mode="<<label<<" growths="<<initial<<" final="<<growths
+            <<" uploads="<<uploads<<" error="<<error<<" max_error="<<max_error<<" pass="<<ok<<"\n";
+        return ok;
+    };
     for (const char *mode : {"canny", "standard_lineart", "pyracanny", "luminance"}) {
         auto *changed_settings = obs_data_create();
         obs_data_set_string(changed_settings, "mode_id", mode);
@@ -302,6 +336,7 @@ int main(int argc, char **argv)
             obs_shutdown();
             return 1;
         }
+        if(!reuse(mode))return 1;
         previous = output;
     }
 
@@ -331,7 +366,7 @@ int main(int argc, char **argv)
         std::cout << "mode=depth_anything_v2 transformed=" << got_depth
                   << " completed=" << stat(filter, "completed")
                   << " failures=" << stat(filter, "failed") << "\n";
-        if (!got_depth) {
+        if (!got_depth || !reuse("depth_anything_v2")) {
             std::cerr << "FAIL: real native Depth Anything V2 output missing\n";
             obs_source_filter_remove(source, filter);
             obs_source_release(filter);
@@ -370,7 +405,7 @@ int main(int argc, char **argv)
         std::cout << "mode=teed real_edge_inference=" << got_edges
                   << " teed_completed=" << stat(filter, "teed_completed")
                   << " failures=" << stat(filter, "failed") << "\n";
-        if (!got_edges) {
+        if (!got_edges || !reuse("teed")) {
             std::cerr << "FAIL: TEED native model did not render actual edges\n";
             return 1;
         }
@@ -429,7 +464,7 @@ int main(int argc, char **argv)
         std::cout << "mode=pidinet real_inference=" << detected
                   << " pidinet_completed=" << stat(filter, "pidinet_completed")
                   << " failures=" << stat(filter, "failed") << "\n";
-        if (!detected) {
+        if (!detected || !reuse("pidinet")) {
             std::cerr << "FAIL: real native PiDiNet OBS output missing\n";
             return 1;
         }
@@ -544,7 +579,7 @@ int main(int argc, char **argv)
             }
             return false;
         };
-        if (!await_hed(nullptr)) {
+        if (!await_hed(nullptr)||!reuse("hed")) {
             std::cerr << "FAIL: native HED ONNX did not produce real edges\n";
             return 1;
         }

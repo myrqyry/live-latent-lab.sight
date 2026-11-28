@@ -98,7 +98,8 @@ bool OnnxPidiNetProcessor::estimate(const uint8_t *bgr,
             info.GetShape() != std::vector<int64_t>{1, 1, int64_t(h), int64_t(w)})
             throw std::runtime_error("Unexpected PiDiNet edge tensor dimensions");
         const auto *probabilities = result[0].GetTensorData<float>();
-        std::vector<uint8_t> next(pixels);
+        output_scratch_.resize(pixels);
+        auto& next=output_scratch_;
 #ifdef SIGHT_HAVE_RUST_FRAME_CORE
         if (sight_pidinet_probs_to_gray_v1(
                 probabilities, pixels, safe ? 1 : 0,

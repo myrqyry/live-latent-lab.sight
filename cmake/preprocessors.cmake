@@ -98,7 +98,7 @@ if(SIGHT_XVFB_RUN)
             "$<TARGET_FILE:sight_preprocessors_obs_smoke>"
             "$<TARGET_FILE:live-latent-lab-sight>"
             "${CMAKE_CURRENT_SOURCE_DIR}/data")
-    set_tests_properties(sight_preprocessors_real_obs PROPERTIES TIMEOUT 50)
+    set_tests_properties(sight_preprocessors_real_obs PROPERTIES TIMEOUT 50 ENVIRONMENT "SIGHT_PREPROCESSORS_REUSE=1")
     add_test(NAME sight_preprocessors_missing_model_obs
         COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_obs_sight_render.sh"
             "$<TARGET_FILE:sight_preprocessors_obs_smoke>"

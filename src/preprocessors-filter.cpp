@@ -43,7 +43,11 @@ struct Filter {
     bool stopping = false;
     bool frame_queued = false;
     bool capture_in_flight = false;
-    uint64_t generation = 1;
+    std::atomic<uint64_t> generation{1};
+    uint64_t cancelled_capture=0,texture_generation=0;
+    std::chrono::steady_clock::time_point texture_when{};
+    std::vector<uint8_t> capture_scratch,upload_scratch;
+    std::atomic<uint64_t> growths{0},uploads{0};
     std::string mode_id = "off";
     std::string depth_model_path;
     std::string teed_model_path;
@@ -77,12 +81,40 @@ uint64_t millis_since(std::chrono::steady_clock::time_point moment)
         std::chrono::steady_clock::now() - moment).count());
 }
 
+// Worker-owned storage reused across model modes. Preserve OpenCV's
+// interpolation and color-conversion semantics exactly.
+struct Workspace {
+    cv::Mat resized,channels,full;
+    std::vector<uint8_t> gray;
+};
+void resize_pixels(Filter*f,std::vector<uint8_t>&v,size_t n){
+    if(v.capacity()<n)++f->growths;
+    v.resize(n);
+}
+bool try_submit(Filter*f,uint64_t generation,uint32_t w,uint32_t h){
+    std::unique_lock lock(f->input_mutex,std::try_to_lock);
+    if(!lock||generation!=f->generation||f->stopping||!f->capture_in_flight||f->frame_queued||
+        f->capture_scratch.size()!=size_t(w)*h*4)return false;
+    f->capture_scratch.swap(f->incoming);
+    f->incoming_w=w;f->incoming_h=h;f->frame_queued=true;++f->captures;
+    lock.unlock();f->input_ready.notify_one();return true;
+}
+bool try_take_output(Filter*f,uint32_t&w,uint32_t&h,uint64_t&generation,std::chrono::steady_clock::time_point&when){
+    std::unique_lock lock(f->output_mutex,std::try_to_lock);
+    if(!lock||!f->upload_due||f->output_generation!=f->generation||
+        f->output_when.time_since_epoch().count()==0||millis_since(f->output_when)>kMaxOutputAgeMs||
+        f->output_pixels.empty()||f->output_pixels.size()!=size_t(f->output_w)*f->output_h*4)return false;
+    f->upload_scratch.swap(f->output_pixels);
+    w=f->output_w;h=f->output_h;generation=f->output_generation;when=f->output_when;
+    f->upload_due=false;return true;
+}
+
 // Reuse Sight's validated ONNX Depth Anything V2 backend. Only RGBA->RGB
 // conversion, divisible-by-14 sizing and full-resolution grayscale output
 // belong here; there is no synthetic image fallback or external service.
 bool depth_from_rgba(lll::OnnxDepthProcessor &processor,
                      const std::vector<uint8_t> &input,
-                     uint32_t w, uint32_t h, std::vector<uint8_t> &output)
+                     uint32_t w, uint32_t h, std::vector<uint8_t> &output, Workspace& work)
 {
     if (!processor.ready() || w < 14 || h < 14 ||
         input.size() != static_cast<size_t>(w) * h * 4)
@@ -97,24 +129,24 @@ bool depth_from_rgba(lll::OnnxDepthProcessor &processor,
     const int input_w = dim(w), input_h = dim(h);
     cv::Mat src(static_cast<int>(h),static_cast<int>(w),CV_8UC4,
                 const_cast<uint8_t *>(input.data()));
-    cv::Mat resized, rgb;
+    auto& resized=work.resized;auto& rgb=work.channels;
     cv::resize(src, resized, cv::Size(input_w,input_h), 0, 0,
                scale < 1.f ? cv::INTER_AREA : cv::INTER_LINEAR);
     cv::cvtColor(resized, rgb, cv::COLOR_RGBA2RGB);
-    std::vector<uint8_t> depth;
+    auto& depth=work.gray;
     if (!processor.estimate(rgb.data, input_w, input_h, depth) ||
         depth.size() != size_t(input_w)*input_h)
         return false;
     cv::Mat depth_map(input_h, input_w, CV_8UC1, depth.data());
-    cv::Mat full;
+    auto& full=work.full;
     cv::resize(depth_map,full,cv::Size(int(w),int(h)),0,0,cv::INTER_LINEAR);
-    std::vector<uint8_t> next(input.size());
+    output.resize(input.size());
+    auto& next=output;
     for (size_t i = 0; i < size_t(w)*h; ++i) {
         const uint8_t d = full.data[i];
         next[i*4]=next[i*4+1]=next[i*4+2]=d;
         next[i*4+3]=input[i*4+3];
     }
-    output.swap(next);
     return true;
 }
 
@@ -123,7 +155,7 @@ bool depth_from_rgba(lll::OnnxDepthProcessor &processor,
 // and resizing happen on the worker; the OBS render thread only sees pixels.
 bool teed_from_rgba(lll::OnnxTeedProcessor &processor,
                     const std::vector<uint8_t> &input, uint32_t w, uint32_t h,
-                    int resolution, int safe_steps, std::vector<uint8_t> &output)
+                    int resolution, int safe_steps, std::vector<uint8_t> &output, Workspace& work)
 {
     if (!processor.ready() || w < 8 || h < 8 ||
         input.size() != size_t(w) * h * 4)
@@ -136,25 +168,25 @@ bool teed_from_rgba(lll::OnnxTeedProcessor &processor,
     const int in_w = dim(w), in_h = dim(h);
     cv::Mat source(int(h), int(w), CV_8UC4,
                    const_cast<uint8_t *>(input.data()));
-    cv::Mat resized, rgb;
+    auto& resized=work.resized;auto& rgb=work.channels;
     cv::resize(source, resized, cv::Size(in_w, in_h), 0, 0,
                scale < 1.f ? cv::INTER_AREA : cv::INTER_CUBIC);
     cv::cvtColor(resized, rgb, cv::COLOR_RGBA2RGB);
-    std::vector<uint8_t> gray;
+    auto& gray=work.gray;
     if (!processor.estimate(rgb.data, uint32_t(in_w), uint32_t(in_h),
                             uint32_t(safe_steps), gray) ||
         gray.size() != size_t(in_w) * in_h)
         return false;
     cv::Mat result(in_h, in_w, CV_8UC1, gray.data());
-    cv::Mat full;
+    auto& full=work.full;
     cv::resize(result, full, cv::Size(int(w), int(h)), 0, 0, cv::INTER_LINEAR);
-    std::vector<uint8_t> next(input.size());
+    output.resize(input.size());
+    auto& next=output;
     for (size_t i = 0; i < size_t(w) * h; ++i) {
         const auto value = full.data[i];
         next[4 * i] = next[4 * i + 1] = next[4 * i + 2] = value;
         next[4 * i + 3] = input[4 * i + 3];
     }
-    output.swap(next);
     return true;
 }
 
@@ -163,7 +195,7 @@ bool teed_from_rgba(lll::OnnxTeedProcessor &processor,
 bool pidinet_from_rgba(lll::OnnxPidiNetProcessor &processor,
                        const std::vector<uint8_t> &input, uint32_t w, uint32_t h,
                        int resolution, bool safe, bool scribble,
-                       std::vector<uint8_t> &output)
+                       std::vector<uint8_t> &output, Workspace& work)
 {
     if (!processor.ready() || w < 8 || h < 8 ||
         input.size() != size_t(w) * h * 4)
@@ -176,11 +208,11 @@ bool pidinet_from_rgba(lll::OnnxPidiNetProcessor &processor,
     const int in_w = dim(w), in_h = dim(h);
     cv::Mat source(int(h), int(w), CV_8UC4,
                    const_cast<uint8_t *>(input.data()));
-    cv::Mat resized, bgr;
+    auto& resized=work.resized;auto& bgr=work.channels;
     cv::resize(source, resized, cv::Size(in_w, in_h), 0, 0,
                scale < 1.f ? cv::INTER_AREA : cv::INTER_CUBIC);
     cv::cvtColor(resized, bgr, cv::COLOR_RGBA2BGR);
-    std::vector<uint8_t> gray;
+    auto& gray=work.gray;
     if (!processor.estimate(bgr.data, uint32_t(in_w), uint32_t(in_h),
                             safe, gray) || gray.size() != size_t(in_w) * in_h)
         return false;
@@ -188,15 +220,15 @@ bool pidinet_from_rgba(lll::OnnxPidiNetProcessor &processor,
             gray, uint32_t(in_w), uint32_t(in_h)))
         return false;
     cv::Mat result(in_h, in_w, CV_8UC1, gray.data());
-    cv::Mat full;
+    auto& full=work.full;
     cv::resize(result, full, cv::Size(int(w), int(h)), 0, 0, cv::INTER_LINEAR);
-    std::vector<uint8_t> next(input.size());
+    output.resize(input.size());
+    auto& next=output;
     for (size_t i = 0; i < size_t(w) * h; ++i) {
         const auto value = full.data[i];
         next[4 * i] = next[4 * i + 1] = next[4 * i + 2] = value;
         next[4 * i + 3] = input[4 * i + 3];
     }
-    output.swap(next);
     return true;
 }
 
@@ -206,7 +238,7 @@ bool pidinet_from_rgba(lll::OnnxPidiNetProcessor &processor,
 bool hed_from_rgba(lll::OnnxHedProcessor &processor,
                    const std::vector<uint8_t> &input, uint32_t w, uint32_t h,
                    int resolution, bool safe, bool scribble,
-                   std::vector<uint8_t> &output)
+                   std::vector<uint8_t> &output, Workspace& work)
 {
     if (!processor.ready() || w < 16 || h < 16 ||
         input.size() != size_t(w) * h * 4)
@@ -218,11 +250,11 @@ bool hed_from_rgba(lll::OnnxHedProcessor &processor,
     const int in_w = dim(w), in_h = dim(h);
     cv::Mat source(int(h), int(w), CV_8UC4,
                    const_cast<uint8_t *>(input.data()));
-    cv::Mat resized, rgb;
+    auto& resized=work.resized;auto& rgb=work.channels;
     cv::resize(source, resized, cv::Size(in_w, in_h), 0, 0,
                scale < 1.f ? cv::INTER_AREA : cv::INTER_CUBIC);
     cv::cvtColor(resized, rgb, cv::COLOR_RGBA2RGB);
-    std::vector<uint8_t> gray;
+    auto& gray=work.gray;
     if (!processor.estimate(rgb.data, uint32_t(in_w), uint32_t(in_h),
                             safe, gray) ||
         gray.size() != size_t(in_w) * in_h)
@@ -231,15 +263,15 @@ bool hed_from_rgba(lll::OnnxHedProcessor &processor,
             gray, uint32_t(in_w), uint32_t(in_h)))
         return false;
     cv::Mat result(in_h, in_w, CV_8UC1, gray.data());
-    cv::Mat full;
+    auto& full=work.full;
     cv::resize(result, full, cv::Size(int(w), int(h)), 0, 0, cv::INTER_LINEAR);
-    std::vector<uint8_t> next(input.size());
+    output.resize(input.size());
+    auto& next=output;
     for (size_t i = 0; i < size_t(w) * h; ++i) {
         const uint8_t value = full.data[i];
         next[4 * i] = next[4 * i + 1] = next[4 * i + 2] = value;
         next[4 * i + 3] = input[4 * i + 3];
     }
-    output.swap(next);
     return true;
 }
 
@@ -257,8 +289,9 @@ void worker_main(Filter *filter)
     lll::OnnxHedProcessor hed_processor;
     std::string hed_loaded_path;
     uint64_t hed_last_attempt_generation = 0;
+    Workspace work;
+    std::vector<uint8_t> input,result;
     for (;;) {
-        std::vector<uint8_t> input;
         std::string mode;
         preprocessors::Settings settings;
         std::string depth_model_path, teed_model_path, pidinet_model_path;
@@ -276,7 +309,7 @@ void worker_main(Filter *filter)
                 return filter->stopping || filter->frame_queued;
             });
             if (filter->stopping) return;
-            input = std::move(filter->incoming);
+            input.swap(filter->incoming);
             width = filter->incoming_w;
             height = filter->incoming_h;
             mode = filter->mode_id;
@@ -294,7 +327,7 @@ void worker_main(Filter *filter)
             request_generation = filter->generation;
             filter->frame_queued = false;
         }
-        std::vector<uint8_t> result;
+        const auto old_capacity=result.capacity();
         bool valid = false;
         if (mode == "depth_anything_v2") {
             // Loading and inference stay on the worker: never block OBS
@@ -321,7 +354,7 @@ void worker_main(Filter *filter)
                      "requires a local ONNX model path; no inference performed");
             }
             if (loaded_path == depth_model_path && depth_processor.ready()) {
-                valid = depth_from_rgba(depth_processor, input, width, height, result);
+                valid = depth_from_rgba(depth_processor, input, width, height, result,work);
                 if (!valid) {
                     blog(LOG_ERROR, "[Sight/Preprocessors] Native Depth Anything V2 "
                          "inference failed: %s",
@@ -352,7 +385,7 @@ void worker_main(Filter *filter)
             }
             if (teed_loaded_path == teed_model_path && teed_processor.ready()) {
                 valid = teed_from_rgba(teed_processor, input, width, height,
-                                       teed_resolution, teed_safe_steps, result);
+                                       teed_resolution, teed_safe_steps, result,work);
                 if (!valid)
                     blog(LOG_ERROR, "[Sight/Preprocessors] Native TEED "
                          "inference failed: %s",
@@ -382,7 +415,7 @@ void worker_main(Filter *filter)
             if (hed_loaded_path == hed_model_path && hed_processor.ready()) {
                 valid = hed_from_rgba(hed_processor, input, width, height,
                                       hed_resolution, hed_safe,
-                                      mode == "scribble_hed", result);
+                                      mode == "scribble_hed", result,work);
                 if (!valid)
                     blog(LOG_ERROR, "[Sight/Preprocessors] HED inference failed: %s",
                          hed_processor.last_error().c_str());
@@ -412,7 +445,7 @@ void worker_main(Filter *filter)
                 pidinet_processor.ready()) {
                 valid = pidinet_from_rgba(pidinet_processor, input, width,
                                           height, pidinet_resolution, pidinet_safe,
-                                          mode == "scribble_pidinet", result);
+                                          mode == "scribble_pidinet", result,work);
                 if (!valid)
                     blog(LOG_ERROR, "[Sight/Preprocessors] Native PiDiNet "
                          "inference failed: %s",
@@ -423,13 +456,14 @@ void worker_main(Filter *filter)
                 static_cast<int>(width), static_cast<int>(height),
                 static_cast<int>(width) * 4, mode, settings, result);
         }
+        if(result.capacity()>old_capacity)++filter->growths;
         {
             std::lock_guard lock(filter->input_mutex);
             if (request_generation != filter->generation)
                 continue; // Model or mode changed. Never upload stale pixels.
             if (valid) {
                 std::lock_guard out_lock(filter->output_mutex);
-                filter->output_pixels = std::move(result);
+                filter->output_pixels.swap(result);
                 filter->output_w = width;
                 filter->output_h = height;
                 filter->output_generation = request_generation;
@@ -447,6 +481,7 @@ void worker_main(Filter *filter)
             } else {
                 ++filter->failed;
             }
+            input.swap(filter->incoming);
             filter->capture_in_flight = false;
         }
     }
@@ -463,6 +498,11 @@ void stats_proc(void *data, calldata_t *args)
                     static_cast<int64_t>(f->depth_completed.load()));
 }
 
+void buffer_stats_proc(void*data,calldata_t*args){
+    const auto*f=static_cast<Filter*>(data);
+    calldata_set_int(args,"growths",f->growths.load());
+    calldata_set_int(args,"uploads",f->uploads.load());
+}
 void teed_stats_proc(void *data, calldata_t *args)
 {
     auto *f = static_cast<Filter *>(data);
@@ -535,9 +575,7 @@ void update(void *data, obs_data_t *settings)
         f->incoming.clear();
         f->frame_queued = false;
         f->capture_in_flight = false;
-    }
-    {
-        std::lock_guard lock(f->output_mutex);
+        std::lock_guard out_lock(f->output_mutex);
         f->output_pixels.clear();
         f->upload_due = false;
     }
@@ -561,6 +599,8 @@ void *create(obs_data_t *settings, obs_source_t *source)
     proc_handler_add(obs_source_get_proc_handler(source),
         "void sight_preprocessor_hed_stats_v1(out int hed_completed)",
         hed_stats_proc, f.get());
+    proc_handler_add(obs_source_get_proc_handler(source),
+        "void sight_preprocessor_buffer_stats_v1(out int growths, out int uploads)",buffer_stats_proc,f.get());
     f->worker = std::thread(worker_main, f.get());
     return f.release();
 }
@@ -737,22 +777,25 @@ void render(void *data, gs_effect_t *)
         gs_texture_destroy(f->output_texture);
         f->output_texture = nullptr;
     }
-    bool capture_due = false;
-    uint64_t request_generation = 0;
+    bool capture_due=false,off=false;
+    uint64_t request_generation=0;
     {
-        std::lock_guard lock(f->input_mutex);
-        if (f->mode_id == "off") {
-            obs_source_skip_video_filter(f->source);
-            return;
-        }
-        if (!f->capture_in_flight) {
-            f->capture_in_flight = true;
-            request_generation = f->generation;
-            capture_due = true;
-        } else {
-            ++f->skipped;
-        }
+        std::unique_lock lock(f->input_mutex,std::try_to_lock);
+        if(lock){
+            // A failed graphics submission cannot leave the reservation
+            // stuck; retry cancellation at the next available handoff.
+            if(f->cancelled_capture){
+                if(f->cancelled_capture==f->generation&&!f->frame_queued)
+                    f->capture_in_flight=false;
+                f->cancelled_capture=0;
+            }
+            off=f->mode_id=="off";
+            if(!off&&!f->capture_in_flight){
+                f->capture_in_flight=true;request_generation=f->generation;capture_due=true;
+            }else if(!off)++f->skipped;
+        }else ++f->skipped;
     }
+    if(off){obs_source_skip_video_filter(f->source);return;}
     if (capture_due) {
         bool staged = false;
         if (!f->capture) f->capture = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
@@ -784,60 +827,36 @@ void render(void *data, gs_effect_t *)
                     uint32_t pitch = 0;
                     if (gs_stagesurface_map(f->stage, &mapped, &pitch)) {
                         if (pitch >= w * 4) {
-                            std::vector<uint8_t> frame(static_cast<size_t>(w) * h * 4);
-                            for (uint32_t y = 0; y < h; ++y)
-                                std::memcpy(frame.data() + static_cast<size_t>(y) * w * 4,
-                                            mapped + static_cast<size_t>(y) * pitch, w * 4);
-                            {
-                                std::lock_guard lock(f->input_mutex);
-                                if (f->generation == request_generation && !f->stopping) {
-                                    f->incoming = std::move(frame);
-                                    f->incoming_w = w;
-                                    f->incoming_h = h;
-                                    f->frame_queued = true;
-                                    ++f->captures;
-                                    staged = true;
-                                    f->input_ready.notify_one();
-                                }
-                            }
+                            auto&frame=f->capture_scratch;
+                            resize_pixels(f,frame,size_t(w)*h*4);
+                            for(uint32_t y=0;y<h;++y)
+                                std::memcpy(frame.data()+size_t(y)*w*4,mapped+size_t(y)*pitch,w*4);
+                            staged=try_submit(f,request_generation,w,h);
                         }
                         gs_stagesurface_unmap(f->stage);
                     }
                 }
             }
         }
-        if (!staged) {
-            std::lock_guard lock(f->input_mutex);
-            if (request_generation == f->generation)
-                f->capture_in_flight = false;
-        }
+        if(!staged)f->cancelled_capture=request_generation;
     }
 
-    bool output_active = false;
-    {
-        // Only graphics thread owns output_texture. Worker owns the CPU
-        // packet; no GPU calls cross into the worker.
-        std::lock_guard lock(f->output_mutex);
-        const bool fresh = f->output_when.time_since_epoch().count() != 0 &&
-                           millis_since(f->output_when) <= kMaxOutputAgeMs;
-        if (f->upload_due && fresh && !f->output_pixels.empty()) {
-            if (!f->output_texture ||
-                gs_texture_get_width(f->output_texture) != f->output_w ||
-                gs_texture_get_height(f->output_texture) != f->output_h) {
-                if (f->output_texture) gs_texture_destroy(f->output_texture);
-                f->output_texture = gs_texture_create(f->output_w, f->output_h,
-                    GS_RGBA, 1, nullptr, GS_DYNAMIC);
-            }
-            if (f->output_texture) {
-                gs_texture_set_image(f->output_texture, f->output_pixels.data(),
-                    f->output_w * 4, false);
-                f->upload_due = false;
-            }
+    uint32_t ow=0,oh=0;uint64_t generation=0;
+    std::chrono::steady_clock::time_point when{};
+    if(try_take_output(f,ow,oh,generation,when)&&generation==f->generation){
+        if(!f->output_texture||gs_texture_get_width(f->output_texture)!=ow||
+            gs_texture_get_height(f->output_texture)!=oh){
+            if(f->output_texture)gs_texture_destroy(f->output_texture);
+            f->output_texture=gs_texture_create(ow,oh,GS_RGBA,1,nullptr,GS_DYNAMIC);
         }
-        output_active = fresh && f->output_texture &&
-                        gs_texture_get_width(f->output_texture) == w &&
-                        gs_texture_get_height(f->output_texture) == h;
+        if(f->output_texture){
+            gs_texture_set_image(f->output_texture,f->upload_scratch.data(),ow*4,false);
+            f->texture_when=when;f->texture_generation=generation;++f->uploads;
+        }
     }
+    const bool output_active=f->output_texture&&f->texture_generation==f->generation&&
+        f->texture_when.time_since_epoch().count()!=0&&millis_since(f->texture_when)<=kMaxOutputAgeMs&&
+        gs_texture_get_width(f->output_texture)==w&&gs_texture_get_height(f->output_texture)==h;
 
     if (!output_active) {
         obs_source_skip_video_filter(f->source);

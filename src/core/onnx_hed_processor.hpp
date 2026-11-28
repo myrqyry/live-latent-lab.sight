@@ -20,6 +20,7 @@ private:
     std::unique_ptr<Ort::Session> session_;
     Ort::MemoryInfo memory_{Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault)};
     std::string last_error_;
+    std::vector<uint8_t> output_scratch_;
     std::vector<float> input_;
 };
 } // namespace lll

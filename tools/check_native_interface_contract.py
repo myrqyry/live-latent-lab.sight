@@ -157,7 +157,7 @@ def main() -> int:
     except ContractError as err:
         print("FAIL: Sight native interface contract drift\n"+str(err),file=sys.stderr)
         return 1
-    print("PASS: Sight native ABI contract (4 Rust exports, 4 OBS procedures)")
+    print(f"PASS: Sight native ABI contract ({len(content['manifest']['rust_ffi'])} Rust exports, {len(content['manifest']['obs_procedures'])} OBS procedures)")
     return 0
 
 

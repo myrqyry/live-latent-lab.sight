@@ -105,7 +105,8 @@ bool OnnxTeedProcessor::estimate(const uint8_t *rgb,
                 throw std::runtime_error("TEED output tensor shape changed");
             maps[i] = results[i].GetTensorData<float>();
         }
-        std::vector<uint8_t> pixels_out(pixels);
+        output_scratch_.resize(pixels);
+        auto& pixels_out=output_scratch_;
 #ifdef SIGHT_HAVE_RUST_FRAME_CORE
         if (sight_teed_edges_to_gray_v1(maps[0], maps[1], maps[2], maps[3],
                                         pixels, safe_steps, pixels_out.data(),

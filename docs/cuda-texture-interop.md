@@ -162,3 +162,35 @@ metadata, known sequence, invalid ABI, disable, expiration and recovery.
 and deferred geometry regression. Counts cover instrumented pixel
 vectors, not all ONNX or driver allocations. GPU-native model I/O
 binding and staging removal are not implemented for Depth yet.
+
+## Preprocessors frame and model workspaces (2026-11-28)
+
+Preprocessors has no independent CPU image snapshot consumer, so the
+graphics thread takes a completed RGBA vector by swapping ownership
+rather than copying the frame. Capture and worker result vectors retain
+capacity. Input reservation, submission and output exchange use try-locks;
+failed capture reservations are cancelled on the next available render
+handoff. Upload happens outside publication locks. Texture age,
+generation and dimensions remain checked before display. The neural
+modes share worker-owned OpenCV resize/color/upsampling storage and
+gray output buffers. TEED, PiDiNet and HED retain transactional output
+scratch buffers across calls. Existing model normalization, safe-step,
+scribble and alpha semantics are retained.
+
+Actual OBS CPU and RTX 2070 SUPER CUDA qualification covered canny,
+standard_lineart, pyracanny, luminance, Depth Anything V2, TEED,
+PiDiNet and HED. Each mode produced stable counted capture/output
+capacity after warm-up. CPU run reached 78 uploads; final CUDA run
+reached 81 uploads. Repeated rendered outputs were byte-identical
+except CUDA Depth Anything: max difference 1/255, total absolute
+difference 27 over 245760 RGBA bytes in the final run. The test permits
+only bounded one-level variation for CUDA depth, exact equality otherwise.
+Safe and scribble variants, mode switches and missing-model passthrough
+are covered by the actual OBS tests. Existing native OBS gate requires
+buffer reuse; all 57 required cases passed. The new statistics procedure
+is recorded in the native ABI manifest.
+
+Counts cover instrumented capture/output pixel vectors only; OpenCV
+internals, ONNX allocations and driver synchronization are not measured.
+This is a reusable staged processing optimization, not GPU-resident
+tensor binding, zero-readback or a measured end-to-end speedup.
