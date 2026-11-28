@@ -56,7 +56,7 @@ struct latent_codec_data {
 
 static const char *codec_get_name(void *unused) {
     UNUSED_PARAMETER(unused);
-    return "LLL.sight Latent Codec Test";
+    return "lll.sight Latent Codec Test";
 }
 
 static void load_model_deferred(latent_codec_data *filter) {

@@ -1,7 +1,7 @@
 # Optional native diffusion
 
-The validated Linux build can additionally expose **LLL.sight Generator
-(Experimental)** and **LLL.sight Live Diffusion (Experimental)**. The
+The validated Linux build can additionally expose **lll.sight Generator
+(Experimental)** and **lll.sight Live Diffusion (Experimental)**. The
 optional generator and filter are independent of the legacy all-effects
 build. Both are disabled by default. They run locally; no cloud fallback.
 

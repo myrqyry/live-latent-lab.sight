@@ -1,6 +1,6 @@
 # Optional neural rendering (experimental, Linux/CUDA)
 
-The **LLL.sight Neural Rendering (Experimental)** filter is an opt-in
+The **lll.sight Neural Rendering (Experimental)** filter is an opt-in
 integration with a trusted local CUDA worker. It is not NVIDIA's official
 NGX/DLSS runtime. Sight's source includes the worker and bridge, not the
 external graph or learned parameters. It does not obtain or extract any

@@ -424,7 +424,7 @@ void draw(Source *s, const Settings &config) {
   while (gs_effect_loop(effect, "Draw"))
     gs_draw_sprite(texture, 0, config.width, config.height);
 }
-const char *name(void *) { return "LLL.sight VRM Avatar (Native)"; }
+const char *name(void *) { return "lll.sight VRM Avatar (Native)"; }
 void update(void *data, obs_data_t *settings);
 void *create(obs_data_t *settings, obs_source_t *context) {
   auto *s = new Source;

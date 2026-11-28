@@ -18,7 +18,7 @@
 #include <QUrl>
 
 /**
- * Live Latent Lab: Sight: AI Style Transfer Filter for OBS Studio
+ * lll.sight: AI Style Transfer Filter for OBS Studio
  * 
  * Architecture Overview:
  * - Main Thread: Handles OBS rendering pipeline (video_render, video_tick)
@@ -379,7 +379,7 @@ struct style_transfer_data {
         status = msg;
         // Duplicate status to log so we can debug "UI not updating" issues
         if (std::string(msg) != "Active" && std::string(msg) != "Processing frame...") {
-            blog(LOG_INFO, "[Live Latent Lab: Sight] Status: %s", status.c_str());
+            blog(LOG_INFO, "[lll.sight] Status: %s", status.c_str());
         }
     }
     
@@ -449,7 +449,7 @@ static bool is_valid_model_path(const char *path) {
     // Check file exists and is readable
     FILE *f = fopen(path, "rb");
     if (!f) {
-        blog(LOG_WARNING, "[Live Latent Lab: Sight] Cannot open model file: %s", path);
+        blog(LOG_WARNING, "[lll.sight] Cannot open model file: %s", path);
         return false;
     }
     
@@ -459,7 +459,7 @@ static bool is_valid_model_path(const char *path) {
     fseek(f, 0, SEEK_SET);
     
     if (file_size < 1024 * 1024) {
-        blog(LOG_WARNING, "[Live Latent Lab: Sight] Model file too small (%ld bytes): %s", file_size, path);
+        blog(LOG_WARNING, "[lll.sight] Model file too small (%ld bytes): %s", file_size, path);
         fclose(f);
         return false;
     }
@@ -474,7 +474,7 @@ static bool is_valid_model_path(const char *path) {
     
     // GGUF magic: "GGUF" (0x46475547)
     if (memcmp(header, "GGUF", 4) == 0) {
-        // blog(LOG_INFO, "[Live Latent Lab: Sight] Detected valid GGUF model");
+        // blog(LOG_INFO, "[lll.sight] Detected valid GGUF model");
         return true;
     }
     
@@ -484,7 +484,7 @@ static bool is_valid_model_path(const char *path) {
         return true;
     }
     
-    // blog(LOG_ERROR, "[Live Latent Lab: Sight] Unrecognized model format for: %s", path);
+    // blog(LOG_ERROR, "[lll.sight] Unrecognized model format for: %s", path);
     return false;
 }
 
@@ -749,7 +749,7 @@ static bool run_style_transfer(style_transfer_data *filter) {
             }
 
             preprocess_canny(control_img, high_thresh, low_thresh, 255.0f, 255.0f, false);
-            blog(LOG_DEBUG, "[Live Latent Lab: Sight] Generated Canny control image");
+            blog(LOG_DEBUG, "[lll.sight] Generated Canny control image");
         } else if (filter->controlnet_mode == 2) {
             // Luminance (pseudo-depth) mode - Fast approximation using grayscale
             // This is much faster than actual depth estimation and works well for ControlNet
@@ -764,11 +764,11 @@ static bool run_style_transfer(style_transfer_data *filter) {
                 control_img.data[i * 3 + 1] = luma;
                 control_img.data[i * 3 + 2] = luma;
             }
-            blog(LOG_DEBUG, "[Live Latent Lab: Sight] Generated Luminance control image");
+            blog(LOG_DEBUG, "[lll.sight] Generated Luminance control image");
         } else if (filter->controlnet_mode == 3) {
             // Pass-through mode - Use input image directly as control
             // Useful for lineart, scribble, or tile ControlNets
-            blog(LOG_DEBUG, "[Live Latent Lab: Sight] Using pass-through control image");
+            blog(LOG_DEBUG, "[lll.sight] Using pass-through control image");
         } else if (filter->controlnet_mode == 4) {
             // Silhouette/High-Contrast mode - Creates edge-enhanced silhouette
             // Works well with lineart, scribble, and some pose ControlNets
@@ -804,7 +804,7 @@ static bool run_style_transfer(style_transfer_data *filter) {
                     control_img.data[idx * 3 + 2] = edge;
                 }
             }
-            blog(LOG_DEBUG, "[Live Latent Lab: Sight] Generated Silhouette control image");
+            blog(LOG_DEBUG, "[lll.sight] Generated Silhouette control image");
         } else if (filter->controlnet_mode == 5) {
             // Soft Edge mode - Smoother edges for more artistic control
             // Good for scribble and sketch ControlNets
@@ -844,7 +844,7 @@ static bool run_style_transfer(style_transfer_data *filter) {
                     control_img.data[idx * 3 + 2] = edge;
                 }
             }
-            blog(LOG_DEBUG, "[Live Latent Lab: Sight] Generated Soft Edge control image");
+            blog(LOG_DEBUG, "[lll.sight] Generated Soft Edge control image");
         } else if (filter->controlnet_mode == 6) {
             // RTMPose-17 is top-down and expects a centered person crop. The
             // estimator runs here on the worker thread, never in video_render.
@@ -871,7 +871,7 @@ static bool run_style_transfer(style_transfer_data *filter) {
                             filter->pose_estimator = std::move(estimator);
                     }
                     if (!filter->pose_estimator && !error.empty())
-                        blog(LOG_WARNING, "[Live Latent Lab: Sight] RTMPose model unavailable: %s", error.c_str());
+                        blog(LOG_WARNING, "[lll.sight] RTMPose model unavailable: %s", error.c_str());
                     bfree(model_dir);
                 }
             }
@@ -891,7 +891,7 @@ static bool run_style_transfer(style_transfer_data *filter) {
             }
 
             render_openpose_skeleton(control_img.data, target_w, target_h, pose, true, 4, 6);
-            blog(LOG_DEBUG, "[Live Latent Lab: Sight] Generated RTMPose control image");
+            blog(LOG_DEBUG, "[lll.sight] Generated RTMPose control image");
         } else if (filter->controlnet_mode == 7) {
             // Neural Depth mode - Use Depth Anything v2 for real depth estimation
             if (!filter->depth_estimator) {
@@ -914,7 +914,7 @@ static bool run_style_transfer(style_transfer_data *filter) {
                         control_img.data[i * 3 + 1] = depth_gray[i];
                         control_img.data[i * 3 + 2] = depth_gray[i];
                     }
-                    blog(LOG_DEBUG, "[Live Latent Lab: Sight] Generated Neural Depth control image");
+                    blog(LOG_DEBUG, "[lll.sight] Generated Neural Depth control image");
                 } else {
                     // Fallback to luminance if depth estimation fails
                  for (size_t i = 0; i < target_pixels; ++i) {
@@ -927,7 +927,7 @@ static bool run_style_transfer(style_transfer_data *filter) {
                         control_img.data[i * 3 + 1] = luma;
                         control_img.data[i * 3 + 2] = luma;
                     }
-                    blog(LOG_WARNING, "[Live Latent Lab: Sight] Neural depth failed, using luminance fallback");
+                    blog(LOG_WARNING, "[lll.sight] Neural depth failed, using luminance fallback");
                 }
             } else {
                 // Fallback to luminance if model not loaded
@@ -941,7 +941,7 @@ static bool run_style_transfer(style_transfer_data *filter) {
                     control_img.data[i * 3 + 1] = luma;
                     control_img.data[i * 3 + 2] = luma;
                 }
-                blog(LOG_WARNING, "[Live Latent Lab: Sight] Depth model not ready, using luminance fallback");
+                blog(LOG_WARNING, "[lll.sight] Depth model not ready, using luminance fallback");
             }
         } else if (filter->controlnet_mode == 8) {
             // Face Mesh mode - Render MediaPipe landmarks as control image
@@ -970,15 +970,15 @@ static bool run_style_transfer(style_transfer_data *filter) {
                         0, 0, 0,        // Black background
                         255, 255, 255   // White lines
                     );
-                    blog(LOG_DEBUG, "[Live Latent Lab: Sight] Generated Face Mesh control image with %d landmarks", count);
+                    blog(LOG_DEBUG, "[lll.sight] Generated Face Mesh control image with %d landmarks", count);
                 } else {
                     // No face detected - use black control image
                      std::memset(control_img.data, 0, target_rgb_size);
-                    blog(LOG_DEBUG, "[Live Latent Lab: Sight] No face detected for mesh control");
+                    blog(LOG_DEBUG, "[lll.sight] No face detected for mesh control");
                 }
             } else {
                 // MediaPipe not available - fallback to pass-through
-                blog(LOG_WARNING, "[Live Latent Lab: Sight] MediaPipe not available for Face Mesh mode");
+                blog(LOG_WARNING, "[lll.sight] MediaPipe not available for Face Mesh mode");
             }
         }
     }
@@ -1024,7 +1024,7 @@ static bool run_style_transfer(style_transfer_data *filter) {
         gen_params.control_strength = filter->controlnet_strength;
     }
     
-    blog(LOG_DEBUG, "[Live Latent Lab: Sight] Inference starting: %dx%d, steps=%d, seed=%ld", target_w, target_h, target_steps, gen_params.seed);
+    blog(LOG_DEBUG, "[lll.sight] Inference starting: %dx%d, steps=%d, seed=%ld", target_w, target_h, target_steps, gen_params.seed);
     
     // Generate with new API
     auto result = lll::LatentEngine::get().generate(gen_params);
@@ -1066,7 +1066,7 @@ static bool run_style_transfer(style_transfer_data *filter) {
         );
         
         if (!resize_ok) {
-            blog(LOG_ERROR, "[Live Latent Lab: Sight] Output resize failed: buffer size mismatch");
+            blog(LOG_ERROR, "[lll.sight] Output resize failed: buffer size mismatch");
             success = false;
         } else {
             filter->new_frame_ready = true;
@@ -1099,7 +1099,7 @@ static bool run_style_transfer(style_transfer_data *filter) {
 
                      float score = filter->nsfw_detector->predict(rgb_check.data(), target_w, target_h);
                      if (score > 0.8f) {
-                         blog(LOG_WARNING, "[Live Latent Lab: Sight] NSFW Content Detected (Score: %.2f) - Blocking Frame", score);
+                         blog(LOG_WARNING, "[lll.sight] NSFW Content Detected (Score: %.2f) - Blocking Frame", score);
                          
                          // Block content: Nice Effective Blur (Stack Blur)
                          // We blur the full resolution output directly
@@ -1175,7 +1175,7 @@ static void ai_worker_loop(style_transfer_data *filter) {
         
         // 1. Validate dimensions
         if (target_w == 0 || target_h == 0 || width == 0 || height == 0) {
-            blog(LOG_ERROR, "[Live Latent Lab: Sight] Invalid dimensions: target=%ux%u, source=%ux%u", 
+            blog(LOG_ERROR, "[lll.sight] Invalid dimensions: target=%ux%u, source=%ux%u",
                  target_w, target_h, width, height);
             filter->processing = false;
             filter->frames_dropped++;
@@ -1186,7 +1186,7 @@ static void ai_worker_loop(style_transfer_data *filter) {
         
         // 2. Check for integer overflow
         if (target_w > SIZE_MAX / 4 / target_h) {
-            blog(LOG_ERROR, "[Live Latent Lab: Sight] Buffer size overflow: %ux%u", target_w, target_h);
+            blog(LOG_ERROR, "[lll.sight] Buffer size overflow: %ux%u", target_w, target_h);
             filter->set_status("Memory Error");
             filter->processing = false;
             filter->frames_dropped++;
@@ -1202,7 +1202,7 @@ static void ai_worker_loop(style_transfer_data *filter) {
                 filter->last_process_w = target_w;
                 filter->last_process_h = target_h;
             } catch (const std::bad_alloc& e) {
-                blog(LOG_ERROR, "[Live Latent Lab: Sight] Failed to allocate input buffer: %s", e.what());
+                blog(LOG_ERROR, "[lll.sight] Failed to allocate input buffer: %s", e.what());
                 filter->set_status("Out of Memory");
                 filter->processing = false;
                 filter->frames_dropped++;
@@ -1212,14 +1212,14 @@ static void ai_worker_loop(style_transfer_data *filter) {
         
         // 4. Pre-validate buffer sizes match requirements
         if (input_copy.size() != static_cast<size_t>(width) * height * 4) {
-             blog(LOG_ERROR, "[Live Latent Lab: Sight] Input buffer size mismatch: %zu (expected %zu)",
+             blog(LOG_ERROR, "[lll.sight] Input buffer size mismatch: %zu (expected %zu)",
                   input_copy.size(), static_cast<size_t>(width) * height * 4);
              continue;
         }
         
         if (filter->input_small.size() != required_size) {
              // Should have been resized above, but double check
-             blog(LOG_ERROR, "[Live Latent Lab: Sight] Target buffer mismatch: %zu (expected %zu)",
+             blog(LOG_ERROR, "[lll.sight] Target buffer mismatch: %zu (expected %zu)",
                   filter->input_small.size(), required_size);
              try {
                 filter->input_small.resize(required_size);
@@ -1235,7 +1235,7 @@ static void ai_worker_loop(style_transfer_data *filter) {
         );
         
         if (!resize_ok) {
-            blog(LOG_ERROR, "[Live Latent Lab: Sight] Bilinear resize failed");
+            blog(LOG_ERROR, "[lll.sight] Bilinear resize failed");
             filter->processing = false;
             continue;
         }
@@ -1301,7 +1301,7 @@ static void ai_worker_loop(style_transfer_data *filter) {
                         ? filter->generation_ms_total / filter->generation_attempts
                         : 0.0;
                     blog(LOG_INFO,
-                         "[Live Latent Lab: Sight] Profiling: attempts=%llu success=%llu failed=%llu "
+                         "[lll.sight] Profiling: attempts=%llu success=%llu failed=%llu "
                          "skipped=%llu max_skip_streak=%llu first_pipeline=%.1fms average_pipeline=%.1fms",
                          static_cast<unsigned long long>(filter->generation_attempts),
                          static_cast<unsigned long long>(filter->successful_generations),
@@ -1326,13 +1326,13 @@ static void ai_worker_loop(style_transfer_data *filter) {
             filter->processing = false;
             
         } catch (const std::exception& e) {
-            blog(LOG_ERROR, "[Live Latent Lab: Sight] Worker thread exception: %s", e.what());
+            blog(LOG_ERROR, "[lll.sight] Worker thread exception: %s", e.what());
             filter->set_status("Error: processing exception");
             filter->processing = false;
             filter->frames_dropped++;
             // Continue running despite error
         } catch (...) {
-            blog(LOG_ERROR, "[Live Latent Lab: Sight] Worker thread unknown exception");
+            blog(LOG_ERROR, "[lll.sight] Worker thread unknown exception");
             filter->set_status("Error: unknown exception");
             filter->processing = false;
             filter->frames_dropped++;
@@ -1394,7 +1394,7 @@ static void video_render(void *data, gs_effect_t *effect) {
     style_transfer_data *filter = (style_transfer_data *)data;
     obs_source_t *target = obs_filter_get_target(filter->context);
     if (!target) {
-        blog(LOG_WARNING, "[Live Latent Lab: Sight] No filter target");
+        blog(LOG_WARNING, "[lll.sight] No filter target");
         obs_source_skip_video_filter(filter->context);
         return;
     }
@@ -1402,7 +1402,7 @@ static void video_render(void *data, gs_effect_t *effect) {
     uint32_t width = obs_source_get_base_width(target);
     uint32_t height = obs_source_get_base_height(target);
     if (!width || !height) {
-        blog(LOG_WARNING, "[Live Latent Lab: Sight] Invalid source dimensions: %ux%u", width, height);
+        blog(LOG_WARNING, "[lll.sight] Invalid source dimensions: %ux%u", width, height);
         obs_source_skip_video_filter(filter->context);
         return;
     }
@@ -1423,7 +1423,7 @@ static void video_render(void *data, gs_effect_t *effect) {
     if (filter->trigger_capture && filter->model_ready && !filter->processing) {
         if (!filter->capture_texrender) {
             filter->capture_texrender = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
-            blog(LOG_INFO, "[Live Latent Lab: Sight] Created texrender");
+            blog(LOG_INFO, "[lll.sight] Created texrender");
         }
         
         if (gs_texrender_begin(filter->capture_texrender, width, height)) {
@@ -1439,14 +1439,14 @@ static void video_render(void *data, gs_effect_t *effect) {
             if (tex) {
                  if (!filter->capture_staging) {
                       filter->capture_staging = gs_stagesurface_create(width, height, GS_RGBA);
-                      blog(LOG_INFO, "[Live Latent Lab: Sight] Created staging surface %ux%u", width, height);
+                      blog(LOG_INFO, "[lll.sight] Created staging surface %ux%u", width, height);
                  }
                  
                  if (gs_stagesurface_get_width(filter->capture_staging) != width ||
                      gs_stagesurface_get_height(filter->capture_staging) != height) {
                      gs_stagesurface_destroy(filter->capture_staging);
                      filter->capture_staging = gs_stagesurface_create(width, height, GS_RGBA);
-                     blog(LOG_INFO, "[Live Latent Lab: Sight] Recreated staging surface %ux%u", width, height);
+                     blog(LOG_INFO, "[lll.sight] Recreated staging surface %ux%u", width, height);
                  }
                  
                  if (filter->capture_staging) {
@@ -1458,7 +1458,7 @@ static void video_render(void *data, gs_effect_t *effect) {
                          size_t input_pixels = 0;
                          size_t input_size = 0;
                          if (!checked_image_sizes(width, height, 4, input_pixels, input_size)) {
-                             blog(LOG_ERROR, "[Live Latent Lab: Sight] Input dimensions overflow: %ux%u", width, height);
+                             blog(LOG_ERROR, "[lll.sight] Input dimensions overflow: %ux%u", width, height);
                              gs_stagesurface_unmap(filter->capture_staging);
                              filter->frames_dropped++;
                          } else {
@@ -1482,20 +1482,20 @@ static void video_render(void *data, gs_effect_t *effect) {
                         
                         capture_counter++;
                          if (capture_counter <= 5 || capture_counter % 100 == 0) {
-                            blog(LOG_INFO, "[Live Latent Lab: Sight] Captured frame #%d (%ux%u), notifying worker", 
+                            blog(LOG_INFO, "[lll.sight] Captured frame #%d (%ux%u), notifying worker",
                                  capture_counter, width, height);
                          }
                          }
                      } else {
-                        blog(LOG_ERROR, "[Live Latent Lab: Sight] Failed to map staging surface");
+                        blog(LOG_ERROR, "[lll.sight] Failed to map staging surface");
                     }
                     filter->frame_cv.notify_one();
                  }
             } else {
-                blog(LOG_ERROR, "[Live Latent Lab: Sight] Failed to get texture from texrender");
+                blog(LOG_ERROR, "[lll.sight] Failed to get texture from texrender");
             }
         } else {
-            blog(LOG_ERROR, "[Live Latent Lab: Sight] Failed to begin texrender");
+            blog(LOG_ERROR, "[lll.sight] Failed to begin texrender");
         }
         filter->trigger_capture = false;
     }
@@ -1510,7 +1510,7 @@ static void video_render(void *data, gs_effect_t *effect) {
                                            filter->texture_height != height;
             
             if (needs_recreation) {
-                blog(LOG_INFO, "[Live Latent Lab: Sight] Resolution change detected: %ux%u -> %ux%u",
+                blog(LOG_INFO, "[lll.sight] Resolution change detected: %ux%u -> %ux%u",
                      filter->texture_width, filter->texture_height, width, height);
 
                 // Keep old textures for one frame to allow smooth transition
@@ -1524,7 +1524,7 @@ static void video_render(void *data, gs_effect_t *effect) {
                 filter->prev_output_texture = nullptr;
                 
                 if (!filter->output_texture) {
-                    blog(LOG_ERROR, "[Live Latent Lab: Sight] Failed to create output texture %ux%u", width, height);
+                    blog(LOG_ERROR, "[lll.sight] Failed to create output texture %ux%u", width, height);
                     // Restore old textures as fallback
                     filter->output_texture = temp_old_output;
                     filter->prev_output_texture = temp_old_prev;
@@ -1558,7 +1558,7 @@ static void video_render(void *data, gs_effect_t *effect) {
                          filter->prev_output_texture = gs_texture_create(width, height, GS_RGBA, 1, nullptr, GS_DYNAMIC);
                          
                          if (!filter->prev_output_texture) {
-                             blog(LOG_ERROR, "[Live Latent Lab: Sight] Failed to create transition texture");
+                             blog(LOG_ERROR, "[lll.sight] Failed to create transition texture");
                              filter->is_transitioning = false;
                          }
                     }
@@ -1722,7 +1722,7 @@ static void update(void *data, obs_data_t *settings) {
     // Path validation
     if (path && *path) {
         if (strstr(path, "..") || path[0] == '/' || path[0] == '\\' || (path[0] && path[1] == ':')) {
-            blog(LOG_ERROR, "[Live Latent Lab: Sight] Invalid model path: %s", path);
+            blog(LOG_ERROR, "[lll.sight] Invalid model path: %s", path);
             filter->set_status("Invalid model path");
             return;
         }
@@ -1909,14 +1909,14 @@ static void pure_ai_hotkey_callback(void *data, obs_hotkey_id id, obs_hotkey_t *
     // Logic to update OBS property UI if open? 
     // This is hard to do from here without the properties object, but the internal state is what matters for rendering.
     // We can just log it.
-    blog(LOG_INFO, "[Live Latent Lab: Sight] Hotkey: Pure AI Mode %s", filter->pure_ai_mode ? "Enabled" : "Disabled");
+    blog(LOG_INFO, "[lll.sight] Hotkey: Pure AI Mode %s", filter->pure_ai_mode ? "Enabled" : "Disabled");
 }
 
 static void trigger_hotkey_callback(void *data, obs_hotkey_id id, obs_hotkey_t *hotkey, bool pressed) {
     if (!pressed) return;
     auto *filter = static_cast<style_transfer_data *>(data);
     
-    blog(LOG_INFO, "[Live Latent Lab: Sight] Hotkey: Trigger Generation (Clear Cache)");
+    blog(LOG_INFO, "[lll.sight] Hotkey: Trigger Generation (Clear Cache)");
     
     // Clear cache to force new frame generation
     std::lock_guard<std::mutex> lock(filter->output_mutex);
@@ -2059,12 +2059,12 @@ static bool model_path_changed(obs_properties_t *props, obs_property_t *p, obs_d
         
         FILE *f = fopen(path, "rb");
         if (!f) {
-            blog(LOG_WARNING, "[Live Latent Lab: Sight] Selected model file not found: %s", path);
+            blog(LOG_WARNING, "[lll.sight] Selected model file not found: %s", path);
             return false;
         }
         fclose(f);
 
-        blog(LOG_INFO, "[Live Latent Lab: Sight] Detected Z-Image Turbo model, applying optimal settings...");
+        blog(LOG_INFO, "[lll.sight] Detected Z-Image Turbo model, applying optimal settings...");
         
         obs_data_set_string(settings, S_PRESET, PRESET_ZIMAGE_NAME);
         
@@ -2088,12 +2088,12 @@ static bool model_path_changed(obs_properties_t *props, obs_property_t *p, obs_d
         // Validate file exists before auto-configuring
         FILE *f = fopen(path, "rb");
         if (!f) {
-            blog(LOG_WARNING, "[Live Latent Lab: Sight] Selected model file not found: %s", path);
+            blog(LOG_WARNING, "[lll.sight] Selected model file not found: %s", path);
             return false;
         }
         fclose(f);
 
-        blog(LOG_INFO, "[Live Latent Lab: Sight] Detected LCM/Turbo model, applying recommended settings...");
+        blog(LOG_INFO, "[lll.sight] Detected LCM/Turbo model, applying recommended settings...");
         
         // Find LCM preset
         obs_data_set_string(settings, S_PRESET, PRESET_LCM_NAME);
@@ -2119,9 +2119,9 @@ static bool model_path_changed(obs_properties_t *props, obs_property_t *p, obs_d
 static bool test_inference_callback(obs_properties_t *props, obs_property_t *property, void *data) {
     auto *filter = static_cast<style_transfer_data *>(data);
     
-    blog(LOG_INFO, "[Live Latent Lab: Sight] TEST: model_ready=%d, processing=%d, has_pending=%d", 
+    blog(LOG_INFO, "[lll.sight] TEST: model_ready=%d, processing=%d, has_pending=%d",
          filter->model_ready.load(), filter->processing.load(), filter->has_pending_frame);
-    blog(LOG_INFO, "[Live Latent Lab: Sight] TEST: output_texture=%p, frame_cache_init=%d", 
+    blog(LOG_INFO, "[lll.sight] TEST: output_texture=%p, frame_cache_init=%d",
          filter->output_texture, filter->frame_cache.initialized);
         filter->set_status("Test button clicked - check logs");
     return true;
@@ -2157,7 +2157,7 @@ static bool export_preset_callback(obs_properties_t *props, obs_property_t *p, v
         if (f) {
             fputs(json, f);
             fclose(f);
-            blog(LOG_INFO, "[Live Latent Lab: Sight] Preset exported to: %s", filename);
+            blog(LOG_INFO, "[lll.sight] Preset exported to: %s", filename);
             filter->set_status("Preset exported successfully");
         } else {
             filter->set_status("Failed to export preset");
@@ -2445,7 +2445,7 @@ static obs_properties_t *get_properties(void *data) {
     return props;
 }
 
-static const char *get_name(void *unused) { return "LLL.sight Latent Style Filter"; }
+static const char *get_name(void *unused) { return "lll.sight Latent Style Filter"; }
 
 static enum gs_color_space get_video_color_space(void *data, size_t count,
                                               const enum gs_color_space *preferred_spaces)

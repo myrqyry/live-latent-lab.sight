@@ -28,7 +28,7 @@ payload. The local SDK's Haru sample is used by the optional render regression,
 never copied to Sight. See the [native SDK documentation](https://docs.live2d.com/en/cubism-sdk-manual/cubism-sdk-for-native/).
 
 Use only your own or appropriately licensed model packages. In OBS the
-optional source is **LLL.sight Live2D Avatar (Native)**. Select a local
+optional source is **lll.sight Live2D Avatar (Native)**. Select a local
 model3.json and the desired face-tracking channel. Not every rig or advanced
 Cubism compositing mode is supported. Missing/incompatible packages are
 rejected rather than simulated.

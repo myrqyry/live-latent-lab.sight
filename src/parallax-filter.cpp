@@ -109,7 +109,7 @@ struct parallax_filter_data {
 
 static const char* parallax_get_name(void* unused) {
     UNUSED_PARAMETER(unused);
-    return "LLL.sight Virtual Dolly";
+    return "lll.sight Virtual Dolly";
 }
 
 static void parallax_inference_loop(parallax_filter_data* filter)

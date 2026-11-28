@@ -76,7 +76,7 @@ SIGHT_MODNET_MODEL, SIGHT_LONGPIPE_MODEL and SIGHT_CUTOUT_PORTRAIT
 
 ## Holistic model (MediaPipe 1.2.3 only)
 
-The candidate build's **LLL.sight Tracking → Holistic**
+The candidate build's **lll.sight Tracking → Holistic**
 OBS filter uses the [official Holistic float16 bundle](https://storage.googleapis.com/mediapipe-models/holistic_landmarker/holistic_landmarker/float16/latest/holistic_landmarker.task).
 Download it manually and select it in the model picker. Also select
 the verified native MediaPipe 1.2.3 runtime in its separate picker.

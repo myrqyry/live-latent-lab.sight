@@ -351,7 +351,7 @@ int main(int argc, char **argv)
     while (obs_enum_filter_types(count++, &name)) {
         std::cout << "registered_filter=" << name << "\n";
         const auto* label = obs_source_get_display_name(name);
-        if (!label || std::strncmp(label, "LLL.sight ", 10) != 0) {
+        if (!label || std::strncmp(label, "lll.sight ", 10) != 0) {
             std::cerr << "FAIL: filter display namespace: " << name << "\n";
             obs_shutdown();return 1;
         }
@@ -382,43 +382,43 @@ int main(int argc, char **argv)
     }
     const char *display_name = obs_source_get_display_name("neural_enhance_filter");
     if (!display_name || std::string(display_name) !=
-            "LLL.sight Portrait Sketch (ControlNet Prep)") {
+            "lll.sight Portrait Sketch (ControlNet Prep)") {
         std::cerr << "FAIL: registered source is mislabelled as anime color style\n";
         obs_shutdown();
         return 1;
     }
     const char *cutout_name = obs_source_get_display_name("sight_u2net_filter");
-    if (!cutout_name || std::string(cutout_name) != "LLL.sight Subject Cutout (U2Net)") {
+    if (!cutout_name || std::string(cutout_name) != "lll.sight Subject Cutout (U2Net)") {
         std::cerr << "FAIL: U2Net filter missing or misnamed\n";
         obs_shutdown();
         return 1;
     }
     const char *depth_name = obs_source_get_display_name("sight_depth_filter");
     if (!depth_name || std::string(depth_name) !=
-            "LLL.sight Depth Camera (Depth Anything)") {
+            "lll.sight Depth Camera (Depth Anything)") {
         std::cerr << "FAIL: Depth Camera missing or misnamed\n";
         obs_shutdown();
         return 1;
     }
     const auto* tracking_name=obs_source_get_display_name("sight_unified_tracking_filter");
-    if(!tracking_name||std::strcmp(tracking_name,"LLL.sight Tracking")){
+    if(!tracking_name||std::strcmp(tracking_name,"lll.sight Tracking")){
         std::cerr<<"FAIL: consolidated tracker missing\n";obs_shutdown();return 1;
     }
     const char* receiver_name=obs_source_get_display_name("sight_tracking_receiver_filter");
-    if (!receiver_name || std::strcmp(receiver_name,"LLL.sight Tracking Signal Receiver")) {
+    if (!receiver_name || std::strcmp(receiver_name,"lll.sight Tracking Signal Receiver")) {
         std::cerr << "FAIL: tracking signal receiver missing or misnamed\n";
         obs_shutdown();
         return 1;
     }
     const char* router_name=obs_source_get_display_name("sight_value_router_filter");
-    if(!router_name || std::strcmp(router_name,"LLL.sight Value Router (Signals + Waves)")) {
+    if(!router_name || std::strcmp(router_name,"lll.sight Value Router (Signals + Waves)")) {
         std::cerr << "FAIL: Value Router is not registered correctly\n";
         obs_shutdown();
         return 1;
     }
     const auto *privacy_name=obs_source_get_display_name("sight_privacy_v2_filter");
     if(!privacy_name||std::strcmp(privacy_name,
-        "LLL.sight Privacy V2 — Conceal All Faces (Experimental)")) {
+        "lll.sight Privacy V2 — Conceal All Faces (Experimental)")) {
         std::cerr<<"FAIL: Privacy V2 filter not registered with correct name\n";
         obs_shutdown();return 1;
     }

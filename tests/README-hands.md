@@ -1,6 +1,6 @@
 # Hand & Gesture Motion — verified Linux/OBS path
 
-**LLL.sight Tracking → Hands & gestures (MediaPipe)** is a tracking mode
+**lll.sight Tracking → Hands & gestures (MediaPipe)** is a tracking mode
 backed by the **Gesture Recognizer**, which returns hand landmarks *and*
 built-in classifications from one model invocation.
 

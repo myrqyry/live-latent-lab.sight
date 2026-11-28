@@ -39,7 +39,7 @@ QWidget* makePage(QWidget*parent){
     auto*root=new QVBoxLayout(page);root->setContentsMargins(8,6,8,6);
     auto*scroll=new QScrollArea(page);scroll->setWidgetResizable(true);scroll->setFrameShape(QFrame::NoFrame);root->addWidget(scroll);
     auto*body=new QWidget(scroll);auto*layout=new QVBoxLayout(body);scroll->setWidget(body);
-    auto*heading=new QLabel("Sight · Models and runtimes",body);auto font=heading->font();font.setBold(true);heading->setFont(font);layout->addWidget(heading);
+    auto*heading=new QLabel("lll.sight · Models and runtimes",body);auto font=heading->font();font.setBold(true);heading->setFont(font);layout->addWidget(heading);
     auto*hint=new QLabel("Choose starting folders for model and runtime file pickers. Existing sources keep their own settings. Downloads open in your browser.",body);
     hint->setWordWrap(true);layout->addWidget(hint);
     auto*form=new QFormLayout;layout->addLayout(form);
@@ -92,7 +92,7 @@ bool savePage(QWidget*page){
     for(auto key:{"models","runtimes"})settings.setValue(key,page->findChild<QLineEdit*>(key)->text());
     settings.sync();
     bool ok=settings.status()==QSettings::NoError;
-    page->findChild<QLabel*>("sight-preferences-status")->setText(ok?"Sight preferences saved.":"Could not save Sight preferences.");
+    page->findChild<QLabel*>("sight-preferences-status")->setText(ok?"lll.sight preferences saved.":"Could not save lll.sight preferences.");
     return ok;
 }
 }
@@ -104,7 +104,7 @@ std::string directory(bool runtime){
 }
 void register_sight_settings(){
     if(section||!qobject_cast<QApplication*>(QCoreApplication::instance()))return;
-    section=std::make_unique<plugin_settings::Section>("lll.sight","LLL.sight",makePage,savePage);
+    section=std::make_unique<plugin_settings::Section>("lll.sight","lll.sight",makePage,savePage);
     section->scan();
     blog(LOG_INFO,"[Sight] SIGHT_FULL_SETTINGS_20261125_B71 Native plugin settings bridge registered");
 }

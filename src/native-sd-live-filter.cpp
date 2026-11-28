@@ -219,7 +219,7 @@ void worker_loop(Filter*f){
     }
     release();
 }
-const char* name(void*){return "LLL.sight Live Diffusion (Experimental)";}
+const char* name(void*){return "lll.sight Live Diffusion (Experimental)";}
 void defaults(obs_data_t*s){
     obs_data_set_default_bool(s,"enabled",true);
     obs_data_set_default_string(s,"backend","CUDA0");

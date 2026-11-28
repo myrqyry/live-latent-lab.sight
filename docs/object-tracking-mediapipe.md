@@ -6,7 +6,7 @@ standalone object detector, not the Holistic pose graph.
 
 ## What is implemented
 
-- Select Objects (MediaPipe) inside LLL.sight Tracking.
+- Select Objects (MediaPipe) inside lll.sight Tracking.
 - Filter ID: sight_unified_tracking_filter; mode: object.
 - Dedicated native MediaPipe 1.2.3 VIDEO Object Detector with explicit
   user-selected TFLite model. Defaults to Google EfficientDet-Lite0

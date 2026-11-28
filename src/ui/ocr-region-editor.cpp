@@ -93,7 +93,7 @@ std::optional<EditorRegions> edit_ocr_regions(QWidget* parent,EditorRegions init
  QDialog dialog;
  dialog.setWindowModality(Qt::ApplicationModal);
  if(parent){dialog.setPalette(parent->palette());dialog.setFont(parent->font());}
- dialog.setObjectName("sightOcrRegionEditor");dialog.setWindowTitle(QObject::tr("Sight · OCR regions"));
+ dialog.setObjectName("sightOcrRegionEditor");dialog.setWindowTitle(QObject::tr("lll.sight · OCR regions"));
  dialog.resize(900,620);
  auto* root=new QVBoxLayout(&dialog);
  auto* instructions=new QLabel(QObject::tr("Select a region, then drag a rectangle over the source snapshot. Changes apply only when you choose OK."),&dialog);

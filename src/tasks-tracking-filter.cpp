@@ -1265,7 +1265,7 @@ void add_properties(obs_properties_t* p,obs_data_t* settings,Mode mode,const std
         auto* overlay=obs_properties_add_bool(p,key(DRAW_OVERLAY).c_str(),"Show tracking overlay here");
         obs_property_set_long_description(overlay,
             "Uncheck to publish landmarks and expression signals invisibly. "
-            "A separate LLL.sight Tracking Signal Receiver can display this channel. "
+            "A separate lll.sight Tracking Signal Receiver can display this channel. "
             "Channel names must be unique for each producer.");
     }
 
@@ -1368,7 +1368,7 @@ obs_properties_t* unified_properties(void* data){
     obs_properties_add_text(p,"unified_note","One model pipeline at a time. Switching releases the previous model and its channels. Add another Tracking filter to run trackers simultaneously.",OBS_TEXT_INFO);
     return p;
 }
-const char* name_unified(void*){return "LLL.sight Tracking";}
+const char* name_unified(void*){return "lll.sight Tracking";}
 void render(void *data,gs_effect_t*) {
     auto *f=static_cast<TrackingFilter*>(data);
     auto *target=obs_filter_get_target(f->context);

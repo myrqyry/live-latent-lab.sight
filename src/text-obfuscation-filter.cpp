@@ -541,7 +541,7 @@ bool open_editor(obs_properties_t*,obs_property_t*,void* data){
             }
             obs_source_update(retained,patch);obs_data_release(patch);changed=true;
         }else{
-            QMessageBox::warning(QApplication::activeWindow(),QObject::tr("Sight · OCR regions"),
+            QMessageBox::warning(QApplication::activeWindow(),QObject::tr("lll.sight · OCR regions"),
                 QObject::tr("The source or region settings changed while editing. Reopen the editor to try again."));
         }
         if(live)obs_data_release(live);
@@ -743,7 +743,7 @@ void render(void* data,gs_effect_t*) {
         obs_source_process_filter_end(f->context,f->effect,w,h);
     }
 }
-const char* name(void*){return "LLL.sight Text Obfuscation (OCR)";}
+const char* name(void*){return "lll.sight Text Obfuscation (OCR)";}
 }
 struct obs_source_info sight_text_obfuscation_filter_info={
     .id="sight_text_obfuscation_filter",.type=OBS_SOURCE_TYPE_FILTER,
