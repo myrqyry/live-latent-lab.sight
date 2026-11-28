@@ -246,7 +246,6 @@ install(FILES
     data/sight-spatial-motion.effect
     data/sight-subject-matte.effect
     data/sight-text-obfuscation.effect
-    data/sight-touch-field.effect
     data/sight-tracking-overlay.effect
     DESTINATION data)
 
@@ -1224,18 +1223,6 @@ if(SIGHT_ANIMEGAN_MODEL)
                         TIMEOUT 90
                         ENVIRONMENT
                             "SIGHT_SMOKE_WIDTH=512;SIGHT_SMOKE_HEIGHT=512;SIGHT_SMOKE_EFFECT=sight_tracking_receiver_filter;SIGHT_SMOKE_SIGNAL_PRODUCER=hand;SIGHT_SMOKE_SIGNAL_CHANNEL=hand;SIGHT_SMOKE_EXPECT_TASK=hand;SIGHT_SMOKE_TASK_RUNTIME=${SIGHT_MEDIAPIPE_LIB};SIGHT_SMOKE_IMAGE_PLUGIN=${SIGHT_IMAGE_SOURCE_MODULE};SIGHT_SMOKE_IMAGE_FILE=${SIGHT_GESTURE_TEST_IMAGE}")
-                    if(SIGHT_MEDIAPIPE_123_LIB)
-                    add_test(NAME sight_legacy_hand_receiver_obs
-                        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_obs_sight_render.sh"
-                            "$<TARGET_FILE:sight_obs_effect_render_smoke>"
-                            "$<TARGET_FILE:live-latent-lab-sight>"
-                            "${SIGHT_GESTURE_MODEL}"
-                            "${CMAKE_CURRENT_SOURCE_DIR}/data")
-                    set_tests_properties(sight_legacy_hand_receiver_obs PROPERTIES
-                        TIMEOUT 90
-                        ENVIRONMENT
-                            "SIGHT_SMOKE_LEGACY_TRACKER=1;SIGHT_SMOKE_WIDTH=512;SIGHT_SMOKE_HEIGHT=512;SIGHT_SMOKE_EFFECT=sight_tracking_receiver_filter;SIGHT_SMOKE_SIGNAL_PRODUCER=hand;SIGHT_SMOKE_SIGNAL_CHANNEL=hand;SIGHT_SMOKE_EXPECT_TASK=hand;SIGHT_SMOKE_TASK_RUNTIME=${SIGHT_MEDIAPIPE_123_LIB};SIGHT_SMOKE_IMAGE_PLUGIN=${SIGHT_IMAGE_SOURCE_MODULE};SIGHT_SMOKE_IMAGE_FILE=${SIGHT_GESTURE_TEST_IMAGE}")
-                    endif()
                     # Reproduces the live webcam bug: the native source is
                     # 640x360, but the model observes a 512x288 inference
                     # frame. Normalized landmarks must retain 640x360 source
@@ -1617,25 +1604,3 @@ if(SIGHT_ENABLE_RTMW AND SIGHT_RTMW_MODEL AND SIGHT_YOLOX_MODEL AND
 endif()
 
 include(cmake/preprocessors.cmake)
-
-# Old scenes can still load hidden compatibility types.
-add_executable(sight_touch_field_signals_test tests/touch_field_signals_test.cpp)
-target_include_directories(sight_touch_field_signals_test PRIVATE src)
-add_test(NAME sight_touch_field_signal_unit COMMAND sight_touch_field_signals_test)
-add_executable(sight_touch_field_events_test tests/touch_field_events_test.cpp)
-target_include_directories(sight_touch_field_events_test PRIVATE src)
-add_test(NAME sight_touch_field_events_unit COMMAND sight_touch_field_events_test)
-if(SIGHT_XVFB_RUN)
-    add_executable(sight_legacy_scene_test tests/verify-legacy-scene.cpp)
-    target_include_directories(sight_legacy_scene_test PRIVATE "${SIGHT_OBS_INCLUDE}")
-    target_link_libraries(sight_legacy_scene_test PRIVATE "${SIGHT_OBS_LIBRARY}")
-    add_test(NAME sight_legacy_scene_obs COMMAND "${SIGHT_XVFB_RUN}" -a
-        $<TARGET_FILE:sight_legacy_scene_test> $<TARGET_FILE:live-latent-lab-sight>
-        "${CMAKE_CURRENT_SOURCE_DIR}/data" "${CMAKE_CURRENT_BINARY_DIR}/legacy-test-config")
-    set_tests_properties(sight_legacy_scene_obs PROPERTIES TIMEOUT 40)
-    add_executable(sight_touch_ripple_gpu_test tests/obs_touch_ripple_gpu_test.cpp)
-    target_include_directories(sight_touch_ripple_gpu_test PRIVATE "${SIGHT_OBS_INCLUDE}")
-    target_link_libraries(sight_touch_ripple_gpu_test PRIVATE "${SIGHT_OBS_LIBRARY}")
-    add_test(NAME sight_touch_field_gpu_expanding_wave COMMAND "${SIGHT_XVFB_RUN}" -a
-        $<TARGET_FILE:sight_touch_ripple_gpu_test> "${CMAKE_CURRENT_SOURCE_DIR}/data/sight-touch-field.effect")
-endif()

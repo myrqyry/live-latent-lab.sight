@@ -20,10 +20,7 @@ struct ChannelChoice {
 using ChannelChoices=std::map<std::string,ChannelChoice>;
 inline void discover_producer(obs_source_t* parent,obs_source_t* producer,void* opaque) {
     const std::string id=obs_source_get_unversioned_id(producer);
-    const bool unified=id=="sight_unified_tracking_filter";
-    const bool holistic=id=="sight_holistic_motion_filter";
-    if(!unified&&!holistic&&id!="sight_face_motion_filter"&&id!="sight_body_motion_filter"&&
-       id!="sight_hand_motion_filter"&&id!="sight_rtmw_tracking_filter")return;
+    if(id!="sight_unified_tracking_filter")return;
     auto& choices=*static_cast<ChannelChoices*>(opaque);
     auto* settings=obs_source_get_settings(producer);
     const std::string owner=std::string(obs_source_get_name(parent))+" / "+obs_source_get_name(producer);
@@ -34,7 +31,6 @@ inline void discover_producer(obs_source_t* parent,obs_source_t* producer,void* 
             kind,owner,obs_source_enabled(producer),gestures});
         if(!inserted&&(it->second.owner!=owner||it->second.kind!=kind))it->second.ambiguous=true;
     };
-    if(unified){
         const auto mode=parse_tracking_mode(obs_data_get_string(settings,"tracking_mode"));
         if(mode==TrackingMode::Holistic){
             add(tracking_mode_key(mode,"signal_channel_face").c_str(),TrackingKind::Face,false);
@@ -46,16 +42,6 @@ inline void discover_producer(obs_source_t* parent,obs_source_t* producer,void* 
                 mode==TrackingMode::Hand?TrackingKind::Hand:TrackingKind::WholeBody;
             add(tracking_mode_key(mode,"signal_channel").c_str(),kind,mode==TrackingMode::Hand);
         }
-    }else if(holistic){
-        add("signal_channel_face",sight::TrackingKind::Face,false);
-        add("signal_channel_body",sight::TrackingKind::Body,false);
-        add("signal_channel_hand",sight::TrackingKind::Hand,false);
-    }else{
-        const auto kind=id=="sight_face_motion_filter"?sight::TrackingKind::Face:
-            id=="sight_body_motion_filter"?sight::TrackingKind::Body:
-            id=="sight_hand_motion_filter"?sight::TrackingKind::Hand:sight::TrackingKind::WholeBody;
-        add("signal_channel",kind,kind==sight::TrackingKind::Hand);
-    }
     obs_data_release(settings);
 }
 inline bool discover_source(void* opaque,obs_source_t* source) {

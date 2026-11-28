@@ -9,7 +9,6 @@ set(SIGHT_BASELINE_SOURCES
     src/depth-filter.cpp
     src/core/onnx_depth_processor.cpp
     src/tasks-tracking-filter.cpp
-    src/touch-field-filter.cpp
     src/core/tasks_tracker.cpp
     src/core/holistic_tracker.cpp
     src/core/object_detector.cpp

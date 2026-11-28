@@ -90,8 +90,8 @@ int main(int argc,char** argv){
     for(const auto* id:{"sight_face_motion_filter","sight_body_motion_filter",
         "sight_hand_motion_filter","sight_holistic_motion_filter",
         "sight_object_tracking_filter","sight_rtmw_tracking_filter","sight_touch_field_filter"}){
-        if(!obs_source_get_display_name(id)||!(obs_get_source_output_flags(id)&OBS_SOURCE_CAP_OBSOLETE)){
-            printf("FAIL: missing or visible legacy compatibility type: %s\n",id);
+        if(obs_source_get_display_name(id)){
+            printf("FAIL: redundant tracker registered: %s\n",id);
             obs_shutdown();return 1;
         }
     }

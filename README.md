@@ -35,9 +35,7 @@ All entries use the `lll.sight` prefix in OBS.
 
 Choose a mode and model in **lll.sight Tracking**. Each instance runs
 one selected model pipeline; add another instance for simultaneous
-tracking. The former standalone trackers are registered as hidden compatibility
-types for existing saved scenes (WholeBody requires the RTMW backend).
-New tracking filters use the single unified entry.
+tracking. The six former standalone trackers are no longer registered.
 
 ### Use with hypershader
 
@@ -46,11 +44,9 @@ OCR-region signals. hypershader consumes them for creative effects.
 For hand ripples, place Tracking in Hands & gestures mode upstream of
 hypershader on the same source, disable its overlay, enable shared Sight
 snapshots in hypershader, select the hand channel and choose
-**Sight: Hand Ripples**. The former standalone Touch Field filter is retained
-as a hidden compatibility type so existing scenes retain their effect.
+**Sight: Hand Ripples**. The former standalone Touch Field filter is removed.
 
-The expanded Linux build exposes the eleven entries above, plus hidden
-legacy compatibility registrations. Preprocessors, Spatial Motion
+The expanded Linux build registers the eleven entries above. Preprocessors, Spatial Motion
 and Text Obfuscation require optional system libraries; WholeBody needs
 LiteRT GPU support. Native Live2D remains an [optional local development build](docs/live2d-native.md) using a separately acquired official SDK; it is excluded from the default preview binary, not removed from the source. Unvalidated generative effects remain gated.
 

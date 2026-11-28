@@ -26,5 +26,5 @@ cmake --build "$build" --parallel 4
 mkdir -p "$build/isolated-home" "$build/isolated-config" "$build/isolated-cache" "$build/isolated-data" "$build/isolated-tmp"
 export HOME="$build/isolated-home" XDG_CONFIG_HOME="$build/isolated-config" XDG_CACHE_HOME="$build/isolated-cache" XDG_DATA_HOME="$build/isolated-data" TMPDIR="$build/isolated-tmp"
 ctest --test-dir "$build" --output-on-failure --output-junit "$build/model-free.xml"
-python3 "$root/tools/verify-model-free-report.py" "$build/model-free.xml" 58
+python3 "$root/tools/verify-model-free-report.py" "$build/model-free.xml" 54
 "$root/tools/verify-release-stage.sh" "$build"

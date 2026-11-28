@@ -97,7 +97,7 @@ install(FILES src/vrm/vendor/tinygltf-LICENSE DESTINATION data/licenses/tinygltf
 install(FILES src/vrm/vendor/stb-LICENSE DESTINATION data/licenses/stb RENAME LICENSE)
 install(FILES data/locale/en-US.ini DESTINATION data/locale)
 install(FILES data/presets/anime.json DESTINATION data/presets)
-install(FILES data/sight-depth-camera.effect data/sight-privacy-conceal.effect data/sight-spatial-motion.effect data/sight-subject-matte.effect data/sight-text-obfuscation.effect data/sight-touch-field.effect data/sight-tracking-overlay.effect DESTINATION data)
+install(FILES data/sight-depth-camera.effect data/sight-privacy-conceal.effect data/sight-spatial-motion.effect data/sight-subject-matte.effect data/sight-text-obfuscation.effect data/sight-tracking-overlay.effect DESTINATION data)
 enable_testing()
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 add_test(NAME sight_native_install_guard COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_native_install_guard.py" "${CMAKE_BINARY_DIR}")

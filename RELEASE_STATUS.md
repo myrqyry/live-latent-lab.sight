@@ -245,28 +245,3 @@ old repository's commit graph, assets, local configuration or SDKs.
   in this pass. Legacy individual tracking types and standalone Touch
   Field remain distinct from the consolidated tracking/hypershader
   workflows; compatibility and newer dev-side changes still need review.
-
-### Additional source convergence (2026-11-27)
-
-- Portrait Sketch capture and worker buffers plus reusable ONNX input
-  tensor workspace transferred without development ancestry. Actual
-  320x180 OBS render / 256 detail real AnimeGAN fixture: RED before
-  registration of the growth counter; GREEN with six completed frames,
-  seven growth requests at warm-up and seven at completion.
-- Restore five hidden fixed-mode MediaPipe tracking types plus optional
-  hidden RTMW and hidden standalone Touch Field. The shared current
-  portable runtime loader, fail-closed behavior, and unified mode
-  properties are retained. Existing saved IDs and unprefixed properties
-  work; new users get only unified tracking and the hypershader workflow.
-  A real libobs save/JSON/reload fixture exercises all six available
-  legacy types, settings, updates and channel discovery. Actual legacy
-  hand producer with MediaPipe 1.2.3 published 21 landmarks to current
-  receiver with real rendered changes. Unit and isolated OpenGL
-  expanding-wave shader tests passed. No fresh end-to-end Touch Field
-  model-driven render or RTMW-enabled build in this pass.
-- Isolated 58/58 model-free cases and staging passed, including the
-  legacy shader without any model weights. Native baseline source list
-  and payload include the compatibility code, but Windows/macOS not
-  rebuilt here. No installation, push, old Git history, or private assets
-  imported. Dev continues to receive independent changes: reconcile
-  latest work before retiring the historical repository.
