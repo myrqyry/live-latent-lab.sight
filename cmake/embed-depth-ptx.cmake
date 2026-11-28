@@ -1,2 +1,5 @@
+if(NOT DEFINED SYMBOL)
+    set(SYMBOL sight_depth_ptx)
+endif()
 file(READ "${INPUT}" ptx)
-file(WRITE "${OUTPUT}" "#pragma once\nstatic constexpr char sight_depth_ptx[] = R\"SIGHT_PTX(\n${ptx}\n)SIGHT_PTX\";\n")
+file(WRITE "${OUTPUT}" "#pragma once\nstatic constexpr char ${SYMBOL}[] = R\"SIGHT_PTX(\n${ptx}\n)SIGHT_PTX\";\n")

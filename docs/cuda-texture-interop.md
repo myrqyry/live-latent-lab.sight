@@ -230,3 +230,34 @@ OBS Depth Camera resize and change-aware history, shared snapshot
 expiry/recovery and Preprocessors Depth Anything tests passed. Ordinary
 CPU build passed 57 required tests. No end-to-end render FPS claim.
 Cutout and the other preprocessors still have staged tensor I/O.
+
+## HED multiscale device tensor I/O (2026-11-28)
+
+Optional Linux flag `SIGHT_ENABLE_CUDA_HED_IO` defaults on when
+Preprocessors and CUDA depth I/O are enabled. HED uses the existing
+five-output ONNX model, with persistent CUDA input and output tensors,
+a worker-owned stream, pinned RGB8 input and an embedded PTX kernel
+that performs half-pixel bilinear sampling, float32 averaging, double
+sigmoid, optional safe-step and byte conversion. It does not replace
+the model or the separate CPU scribble NMS implementation. Explicit
+`SIGHT_ONNX_DEVICE=cuda` requires the CUDA provider.
+`SIGHT_HED_CUDA_IO=host` selects the original tensor path for
+comparison; `device` requires the new path, rejecting CPU or builds
+without support. Nonfinite maps reject the result instead of
+publishing a partial image.
+
+Real ControlNetHED ONNX, RTX 2070 SUPER, ORT CUDA 1.30.0, same provider
+on both sides, eight timed iterations after three warmups:
+192x128 4.200 -> 3.350 ms; 320x192 9.177 -> 8.367 ms;
+512x320 16.453 -> 15.051 ms. Soft and safe-step maps were byte-identical
+at all three sizes. Persistent bindings reused; resize back, invalid
+dimensions, reload and CPU/device conflict passed.
+Application tensor-boundary payload changes from nominal
+12N + 4N*(1+1/4+1/16+1/64+1/256) bytes to 4N+4 bytes
+(about 77% less). This is logical payload, not measured PCIe traffic.
+Forced device mode passed actual OBS Preprocessors rendering, mode
+switches, safe and scribble modes, stable counted buffer capacity and
+off passthrough. The normal CPU build passed 57 model-free tests and
+the original HED reference hashes. Existing CPU capture, final edge
+map download, scribble NMS and texture upload remain. No guarantee of
+end-to-end FPS improvement or qualification on other platforms.

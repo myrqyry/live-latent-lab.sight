@@ -1700,3 +1700,41 @@ if(SIGHT_ENABLE_CUDA_DEPTH_IO)
         set_tests_properties(sight_depth_cuda_device_io PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
     endif()
 endif()
+
+# HED multiscale device tensor binding is available only with Preprocessors.
+set(_hed_io_default OFF)
+if(SIGHT_ENABLE_CUDA_DEPTH_IO AND TARGET sight_hed_model_test)
+    set(_hed_io_default ON)
+endif()
+option(SIGHT_ENABLE_CUDA_HED_IO "Fuse HED multiscale outputs on CUDA" ${_hed_io_default})
+if(SIGHT_ENABLE_CUDA_HED_IO)
+    if(NOT TARGET sight_hed_model_test OR NOT EXISTS "${SIGHT_ORT_LIB_DIR}/libonnxruntime_providers_cuda.so")
+        message(FATAL_ERROR "HED device I/O requires Preprocessors and a matching CUDA ONNX Runtime SDK")
+    endif()
+    find_package(CUDAToolkit REQUIRED)
+    set(SIGHT_CUDA_TEXTURE_ARCH "75" CACHE STRING "Minimum CUDA virtual architecture for texture kernels")
+    set(_hed_ptx "${CMAKE_CURRENT_BINARY_DIR}/hed-cuda.ptx")
+    set(_hed_header "${CMAKE_CURRENT_BINARY_DIR}/sight-hed-cuda-ptx.hpp")
+    add_custom_command(OUTPUT "${_hed_header}"
+        COMMAND "${CUDAToolkit_NVCC_EXECUTABLE}" --ptx "-arch=compute_${SIGHT_CUDA_TEXTURE_ARCH}" -O3 --fmad=false --prec-div=true
+                "${CMAKE_CURRENT_SOURCE_DIR}/src/core/hed-cuda-kernels.cu" -o "${_hed_ptx}"
+        COMMAND "${CMAKE_COMMAND}" "-DINPUT=${_hed_ptx}" "-DOUTPUT=${_hed_header}" "-DSYMBOL=sight_hed_ptx"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed-depth-ptx.cmake"
+        DEPENDS src/core/hed-cuda-kernels.cu cmake/embed-depth-ptx.cmake
+        BYPRODUCTS "${_hed_ptx}" VERBATIM)
+    add_custom_target(sight_hed_cuda_ptx DEPENDS "${_hed_header}")
+    add_executable(sight_hed_cuda_io_test tests/verify-hed-cuda-io.cpp src/core/onnx_hed_processor.cpp)
+    target_include_directories(sight_hed_cuda_io_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" "${SIGHT_ORT_INCLUDE}" ${OpenCV_INCLUDE_DIRS})
+    target_link_libraries(sight_hed_cuda_io_test PRIVATE "${SIGHT_ORT_LIBRARY}" ${OpenCV_LIBS})
+    set_target_properties(sight_hed_cuda_io_test PROPERTIES BUILD_RPATH "${SIGHT_ORT_LIB_DIR}")
+    foreach(target IN ITEMS live-latent-lab-sight sight_hed_cuda_io_test)
+        add_dependencies(${target} sight_hed_cuda_ptx)
+        target_include_directories(${target} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+        target_compile_definitions(${target} PRIVATE SIGHT_WITH_CUDA_HED_IO)
+        target_link_libraries(${target} PRIVATE CUDA::cuda_driver)
+    endforeach()
+    if(SIGHT_HED_MODEL)
+        add_test(NAME sight_hed_cuda_device_io COMMAND sight_hed_cuda_io_test "${SIGHT_HED_MODEL}")
+        set_tests_properties(sight_hed_cuda_device_io PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
+    endif()
+endif()

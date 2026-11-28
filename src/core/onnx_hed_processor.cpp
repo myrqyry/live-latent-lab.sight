@@ -11,9 +11,23 @@
 #include <string>
 #include <vector>
 
+#ifdef SIGHT_WITH_CUDA_HED_IO
+#include "hed-cuda-io.inc"
+#endif
 namespace lll {
+OnnxHedProcessor::OnnxHedProcessor()=default;
+OnnxHedProcessor::~OnnxHedProcessor()=default;
+HedTensorIOStats OnnxHedProcessor::tensor_io_stats() const {
+#ifdef SIGHT_WITH_CUDA_HED_IO
+    if(device_io_)return device_io_->stats;
+#endif
+    return {};
+}
 bool OnnxHedProcessor::load(const std::string &path)
 {
+#ifdef SIGHT_WITH_CUDA_HED_IO
+    device_io_.reset();
+#endif
     session_.reset();
     input_.clear();
     last_error_.clear();
@@ -26,8 +40,10 @@ bool OnnxHedProcessor::load(const std::string &path)
         options.SetIntraOpNumThreads(2);
         options.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
         options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-        auto candidate = open_onnx_session(
-            environment_, path.c_str(), options);
+        const char* request=std::getenv("SIGHT_ONNX_DEVICE");
+        const char* provider=nullptr;
+        const bool require_cuda=request&&std::string_view(request)=="cuda";
+        auto candidate=open_onnx_session(environment_,path.c_str(),options,true,&provider,require_cuda);
         if (candidate->GetInputCount() != 1 || candidate->GetOutputCount() != 5)
             throw std::runtime_error("HED requires one RGB input and five edge outputs");
         Ort::AllocatorWithDefaultOptions allocator;
@@ -53,6 +69,19 @@ bool OnnxHedProcessor::load(const std::string &path)
                 shape[1] != 1)
                 throw std::runtime_error("HED scale output must be float32 [1,1,h,w]");
         }
+        const char* io=std::getenv("SIGHT_HED_CUDA_IO");
+        const bool force_device=io&&std::string_view(io)=="device";
+#ifdef SIGHT_WITH_CUDA_HED_IO
+        const bool host=io&&std::string_view(io)=="host";
+        const bool cuda=provider&&std::string_view(provider).find("CUDA")!=std::string_view::npos;
+        if(force_device&&!cuda)throw std::runtime_error("Device HED I/O requires CUDA provider");
+        if(cuda&&!host){
+            auto device=std::make_unique<DeviceIO>();device->init();
+            device_io_=std::move(device);
+        }
+#else
+        if(force_device)throw std::runtime_error("Device HED I/O unavailable in this build");
+#endif
         session_ = std::move(candidate);
         return true;
     } catch (const std::exception &e) {
@@ -71,6 +100,9 @@ bool OnnxHedProcessor::estimate(const uint8_t *rgb, uint32_t w, uint32_t h,
         return false;
     }
     try {
+#ifdef SIGHT_WITH_CUDA_HED_IO
+        if(device_io_){device_io_->run(*session_,rgb,w,h,safe,gray);return true;}
+#endif
         const size_t pixels = size_t(w) * h;
         input_.resize(pixels * 3);
 #ifdef SIGHT_HAVE_RUST_FRAME_CORE

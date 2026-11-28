@@ -355,3 +355,18 @@ Actual OBS device-mode depth and preprocessor output, history,
 resize and snapshot lifecycle passed. Ordinary CPU regression
 57/57. CPU capture, temporal and snapshot consumers retained; other
 models and cross-platform builds not qualified. No install/push.
+
+## HED CUDA multiscale tensor I/O (2026-11-28)
+
+Optional CUDA-bound five-scale HED outputs and GPU interpolation,
+averaging, sigmoid and safe-step quantization. Existing model,
+persistent buffers, pinned compact RGB input, worker-owned CUDA
+stream and embedded PTX. Actual same-provider benchmark on RTX 2070
+SUPER: 192x128 4.200->3.350 ms, 320x192 9.177->8.367 ms,
+512x320 16.453->15.051 ms. Soft and safe maps byte-identical at all
+three sizes; logical model-boundary payload about 77% smaller.
+Reuse, resize, reload, invalid input and CPU/device conflict passed.
+Forced-device OBS Preprocessors HED rendering and mode lifecycle
+passed; ordinary CPU suite 57/57 and original HED model parity
+passed. Host capture, CPU scribble NMS and final upload remain.
+TEED, PiDiNet and Cutout tensor I/O are still pending. No install/push.
